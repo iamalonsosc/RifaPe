@@ -1,0 +1,118 @@
+# RifaFácil 1.0
+
+Aplicación privada para una administradora. Cada rifa tiene participantes, premios, reservas, ventas en soles, pagos manuales y un sorteo oficial. Cada número pagado recibe un boleto individual. La consulta pública funciona en `/boleto/:token`.
+
+## 1. Preparar Supabase
+
+Usa un proyecto dedicado. Si ya tienes información en el proyecto que pensabas usar, primero revisa las tablas con `select schemaname, tablename from pg_tables where schemaname='public' order by tablename;`. Antes de aplicar las migraciones sobre una base con datos, revisa los posibles conflictos y conserva una copia.
+
+En **SQL Editor → New query**, pega y ejecuta **un archivo completo a la vez**, en este orden. Espera el resultado correcto de cada archivo. Cada uno utiliza una transacción. Si falla, conserva el mensaje y corrige la causa antes de continuar. Lleva registro de los archivos ejecutados si usas SQL Editor.
+
+| Orden | Archivo dentro de `supabase/migrations/` | Contenido |
+|---|---|---|
+| 1 | `20261123000100_estructura.sql` | Tablas, RLS, claves, índices y extensión pgcrypto |
+| 2 | `20261123000200_operaciones.sql` | Alta de rifas, premios, números, operaciones comerciales y emisión |
+| 3 | `20261123000300_sorteos_consultas.sql` | Sorteos, auditoría, vistas y consulta limitada de boleto |
+| 4 | `20261123000400_integridad_archivos.sql` | Integridad entre rifas, bloqueo de configuración y bucket de imágenes |
+| 5 | `20261123000500_limite_consultas.sql` | Límite de consultas públicas |
+| 6 | `20261123000600_eliminar_borrador.sql` | Eliminación de rifas sin movimientos |
+| 7 | `20261123000700_plantilla_vigente.sql` | Aplicar la plantilla actual en la consulta pública de boletos ya emitidos |
+
+| 8 | `20261123000800_premios_destacados.sql` | Premios destacados y datos vigentes al consultar el boleto |
+
+| 9 | 20261123000900_fotos_boleto.sql | Fotos opcionales de premios |
+| 10 | 20261123001000_eliminar_persona.sql | Eliminar participantes sin historial de ventas o reservas |
+
+Si ya aplicaste la migración 9, ejecuta únicamente la 10. En las rifas anteriores se seleccionan inicialmente hasta cinco premios según el orden del sorteo. En rifas activas puedes cambiar esa selección desde **Premios**. Al mover un destacado a una prioridad ocupada, ambos intercambian sus posiciones en el boleto.
+
+El boleto muestra el nombre y número de emisión, junto a la fecha, foto y premios vigentes. El teléfono aparece en la copia que genera la administradora. La consulta pública por QR omite el teléfono. Descarga de nuevo los archivos para distribuir los cambios.
+
+La instalación espera que pgcrypto esté en el esquema `extensions` estándar del proyecto. Puedes comprobarlo con `select extnamespace::regnamespace from pg_extension where extname='pgcrypto';`.
+
+## 2. Dar acceso a la administradora
+
+1. En **Authentication**, habilita correo y contraseña y desactiva el registro de nuevos usuarios. La configuración local equivalente está en `supabase/config.toml`.
+2. En **Authentication → Users**, crea tu cuenta con correo confirmado y copia el **User UID**.
+3. Abre `supabase/manual/01_autorizar_administradora.sql`, reemplaza el UUID de ceros por ese UID y ejecútalo en SQL Editor. La autorización usa metadatos de aplicación controlados por el servidor. Un índice limita el sistema a un perfil.
+4. Habilita la integración **Cron** de Supabase. Ejecuta `supabase/manual/02_programar_reservas.sql` para liberar reservas vencidas cada minuto. Las asignaciones también comprueban el vencimiento dentro de la transacción.
+5. Ejecuta `supabase/manual/03_verificar.sql`. Debes ver RLS activo en las tablas de RifaFácil, un perfil, un trabajo Cron activo y el bucket `rifafacil-imagenes` con un límite de 5 MiB. El bucket público está destinado a imágenes de premios y fondos. Sube los recursos desde la cuenta autorizada.
+
+Opcionalmente, en un proyecto de desarrollo, `supabase/desarrollo/semilla.sql` crea una persona y una rifa de ejemplo. Ejecútalo una vez. Las pruebas automáticas usan su propia base temporal.
+
+## 3. Habilitar la consulta pública
+
+Despliega **consultar-boleto** desde `supabase/functions/consultar-boleto/index.ts`. El código usa Deno y la clave interna que Supabase proporciona a las funciones. El navegador solo necesita la clave pública.
+
+Con Supabase CLI instalada, desde la carpeta del proyecto:
+
+```sh
+supabase login
+supabase link --project-ref TU_PROJECT_REF
+supabase secrets set ORIGEN_APLICACION=https://TU-SITIO.netlify.app
+supabase functions deploy consultar-boleto --no-verify-jwt
+```
+
+También puedes crear la Edge Function con ese nombre desde el panel, pegar el contenido del archivo y desactivar la verificación JWT para **esa función**. Configura el secreto `ORIGEN_APLICACION` con el origen exacto, sin barra final. Para pruebas locales de la página pública usa `http://localhost:5173` como origen en un proyecto de desarrollo.
+
+La función exige un UUID, aplica un límite de 60 consultas por minuto y por clave de origen, y pide al servidor exclusivamente el boleto correspondiente. Comprueba el comportamiento del encabezado del proxy en el despliegue. Si el proxy agrupa varias conexiones bajo una IP, compartirán el límite. El boleto conserva los datos históricos de emisión y se presenta con la plantilla vigente de la rifa. El destino de transmisión se consulta en el momento. Los boletos anulados solo muestran su estado.
+
+## 4. Iniciar la aplicación
+
+Usa Node.js 24 LTS y npm. Copia `.env.example` a `.env.local`. Completa `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` con el Project URL y la publishable key de Supabase. Reinicia Vite después de modificar estas variables.
+
+```sh
+npm ci
+npm run dev
+```
+
+Abre la dirección que indica Vite. Entra con tu cuenta, crea una rifa y agrega sus premios en el orden de revelación. Registra participantes desde el menú lateral o desde la selección de números. Al guardar la plantilla, los cambios de presentación se aplican también a los boletos emitidos. Vuelve a descargar las imágenes o PDF que quieras actualizar.
+
+## 5. Desplegar en Netlify
+
+Importa el proyecto a Netlify con `npm run build` como comando, `dist` como directorio publicado y las dos variables públicas configuradas en el entorno de build. `netlify.toml` incluye las rutas SPA y encabezados. También puedes ejecutar el build con las variables locales y subir el contenido compilado de `dist` usando la opción de despliegue manual.
+
+Configura la Site URL de Auth y `ORIGEN_APLICACION` con el dominio definitivo. Emite los boletos desde ese dominio para que sus QR apunten a una dirección estable.
+
+## 6. Verificación por fase
+
+| Fase | Implementación y comprobación |
+|---|---|
+| Base de datos | Migraciones ordenadas sobre PostgreSQL temporal con dos conexiones. Los esquemas mínimos de Auth y Storage del entorno de pruebas están en `pruebas/servicios-locales.sql`. |
+| Auth, rifas, premios y dashboard | Ruta privada, login, tema persistido, indicadores y edición. Playwright cubre login, creación de rifa, navegación móvil y tema con API simulada. |
+| Participantes y operaciones | Una persona participa en varias ventas. Pruebas SQL de venta simultánea, reserva, conversión, vencimiento, pagos parciales, cancelación, precio histórico y devolución. |
+| Boletos | Pruebas SQL de emisión y consulta. Playwright verifica el QR, el enlace y las dos descargas en navegador con un boleto de prueba. |
+| Sorteos | PostgreSQL comprueba factibilidad, las tres reglas de ganadores, idempotencia, bloqueo, 25 premios y continuación desde otra conexión. |
+| Entrega | TypeScript, ESLint y build de producción. La conexión al proyecto alojado, Cron, Storage y el despliegue se comprueban después de configurar las cuentas. |
+
+```sh
+npm run lint
+npm run build
+npm test
+npx playwright install chromium
+npm run test:interfaz
+```
+
+Como alternativa en Windows con Microsoft Edge instalado, usa PowerShell:
+
+```powershell
+$env:CANAL_NAVEGADOR = 'msedge'
+npm run test:interfaz
+```
+
+Las pruebas de PostgreSQL necesitan poder iniciar un proceso temporal, escribir en la carpeta temporal y escuchar en localhost. Usan un puerto aleatorio y eliminan el clúster al terminar. Para desarrollar en Linux, ejecútalas como usuario normal.
+
+### Prueba final en tu proyecto de desarrollo
+
+1. Inicia sesión, crea una rifa, sube una imagen y verifica su vista previa. Agrega dos premios con extracciones ganadoras 3 y 1.
+2. Registra a Alonso, vende 007 y 009 en una venta, cobra el importe completo y abre ambos boletos. Vende 025 reutilizando su ficha.
+3. Abre un QR en una ventana privada. Cambia el enlace de transmisión y verifica que «Ver sorteo» tome el destino actualizado. Cancela una venta antes del sorteo y comprueba que sus boletos se muestren anulados. Registra el dinero devuelto cuando corresponda.
+4. Crea una reserva corta y comprueba su liberación por Cron. Registra suficientes números pagados para el sorteo. Inicia, extrae, recarga la página y continúa desde el último resultado confirmado.
+5. Prueba el enlace público directamente desde el dominio final y las descargas en el móvil que usarás para compartir.
+
+## Decisiones de negocio
+
+- Un número vendido queda ocupado desde la creación de la venta. Solo el pago completo habilita sus boletos y su participación. El precio de cada línea se conserva. Una cancelación pagada crea devoluciones pendientes por pago. Registrar la devolución realizada descuenta el importe de la recaudación neta.
+- Las operaciones de cada rifa toman un bloqueo sobre su fila. Los cambios de asignación, los detalles y el estado de cada número se confirman juntos. La base verifica que premio, participante, número y sorteo correspondan a relaciones compatibles.
+- Al comenzar se fija el conjunto de participaciones pagadas y se bloquea la edición de premios y reglas. Para un premio por persona, la validación considera el peor caso de que ganen primero las personas con más números. Cada extracción usa bytes aleatorios criptográficos en PostgreSQL y se confirma junto con su resultado. El navegador anima el resultado ya persistido.
+- Las extracciones son individuales. La modalidad opcional de posiciones y la ejecución automática secuencial quedan fuera de esta entrega. Cada premio obligatorio admite un número configurable de extracciones.
+- Las imágenes subidas son públicas. Los participantes, ventas y pagos tienen políticas privadas. El nombre impreso en el boleto procede de su emisión. El enlace y el lugar de transmisión reflejan la configuración vigente.

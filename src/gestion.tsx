@@ -1,0 +1,646 @@
+import { useEffect, useState } from "react";
+import { Campo, Formulario, Accion } from "./controles";
+import {
+  campo,
+  filas,
+  rpc,
+  imagen,
+  localPeru,
+  fecha,
+  soles,
+  nombre,
+  numero,
+  type Persona,
+  type Rifa,
+  type Premio,
+  type Fila,
+  type Numero,
+  type Boleto,
+} from "./datos";
+import { Operaciones } from "./operaciones";
+import { Boletos } from "./boletos";
+import { Sorteo } from "./sorteo";
+export function EditarRifa({
+  r,
+  alGuardar,
+}: {
+  r?: Rifa;
+  alGuardar: (id: string) => void;
+}) {
+  return (
+    <section>
+      <Formulario
+        guardar={async (f) =>
+          alGuardar(
+            await rpc<string>("guardar_rifa", {
+              p_nombre: campo(f, "nombre"),
+              p_descripcion: campo(f, "descripcion"),
+              p_precio: Number(f.get("precio")),
+              p_cantidad: Number(f.get("cantidad")),
+              p_fecha: campo(f, "fecha") + ":00-05:00",
+              p_regla: campo(f, "regla"),
+              p_imagen: await imagen(f, "foto", r?.imagen_premio_url),
+              p_rifa: r?.id_rifa ?? null,
+            }),
+          )
+        }
+      >
+        <Campo titulo="Nombre">
+          <input name="nombre" required defaultValue={r?.nombre} />
+        </Campo>
+        <Campo titulo="Descripción">
+          <input name="descripcion" defaultValue={r?.descripcion || ""} />
+        </Campo>
+        <Campo titulo="Precio por número (S/)">
+          <input
+            name="precio"
+            type="number"
+            min=".01"
+            step=".01"
+            defaultValue={r?.precio_numero}
+            required
+          />
+        </Campo>
+        <Campo titulo="Cantidad de números">
+          <input
+            name="cantidad"
+            type="number"
+            list="cantidades"
+            min={r?.cantidad_numeros ?? 1}
+            max={100000}
+            defaultValue={r?.cantidad_numeros ?? 100}
+            required
+          />
+          <datalist id="cantidades">
+            <option>50</option>
+            <option>100</option>
+            <option>200</option>
+          </datalist>
+        </Campo>
+        <Campo titulo="Fecha y hora en Perú">
+          <input
+            type="datetime-local"
+            name="fecha"
+            required
+            defaultValue={r ? localPeru(r.fecha_sorteo) : ""}
+          />
+        </Campo>
+        <Campo titulo="Regla de ganadores">
+          <select name="regla" defaultValue={r?.regla_ganador}>
+            <option value="numero">Un premio por número</option>
+            <option value="persona">Un premio por persona</option>
+            <option value="repeticion">Permitir repetición</option>
+          </select>
+        </Campo>
+        <Campo titulo="Imagen de la rifa · 1200 × 1200 px recomendados">
+          <input
+            name="foto"
+            type="file"
+            accept="image/png,image/webp,image/jpeg"
+          />
+        </Campo>
+      </Formulario>
+    </section>
+  );
+}
+function EditorPremio({
+  r,
+  p,
+  siguiente,
+  premios,
+  recargar,
+}: {
+  r: Rifa;
+  p?: Premio;
+  siguiente: number;
+  premios: Premio[];
+  recargar: () => void;
+}) {
+  const [destacar, cambiar] = useState(p?.prioridad != null);
+  const ocupados = premios.filter(
+    (x) => x.prioridad != null && x.id_premio_rifa !== p?.id_premio_rifa,
+  );
+  const prioridades = [1, 2, 3, 4, 5];
+  return (
+    <Formulario
+      limpiar={!p}
+      guardar={async (f) => {
+        await rpc("guardar_premio_con_prioridad", {
+          p_rifa: r.id_rifa,
+          p_premio: p?.id_premio_rifa ?? null,
+          p_nombre: campo(f, "nombre"),
+          p_descripcion: campo(f, "desc"),
+          p_imagen: await imagen(f, "foto", p?.imagen_url),
+          p_orden: Number(f.get("orden")),
+          p_extraccion: Number(f.get("extraccion")),
+          p_sorpresa: f.has("sorpresa"),
+          p_prioridad: destacar ? Number(f.get("prioridad")) : null,
+        });
+        recargar();
+      }}
+    >
+      <Campo titulo="Nombre del premio">
+        <input name="nombre" required defaultValue={p?.nombre} />
+      </Campo>
+      <Campo titulo="Descripción">
+        <input name="desc" defaultValue={p?.descripcion || ""} />
+      </Campo>
+      <Campo titulo="Posición">
+        <input
+          type="number"
+          name="orden"
+          min="1"
+          required
+          defaultValue={p?.orden_sorteo ?? siguiente}
+        />
+      </Campo>
+      <Campo titulo="Extracción ganadora">
+        <input
+          name="extraccion"
+          type="number"
+          min="1"
+          required
+          defaultValue={p?.numero_extraccion_ganadora ?? 1}
+        />
+      </Campo>
+      <label className="interruptor">
+        Sorpresa
+        <input
+          role="switch"
+          name="sorpresa"
+          type="checkbox"
+          defaultChecked={p?.es_sorpresa}
+        />
+      </label>
+      <label className="interruptor">
+        Destacar en boleto
+        <input
+          role="switch"
+          type="checkbox"
+          checked={destacar}
+          disabled={!destacar && ocupados.length >= 5}
+          onChange={(e) => cambiar(e.target.checked)}
+        />
+      </label>
+      {ocupados.length >= 5 && !destacar && (
+        <p>
+          Ya hay cinco premios destacados. Desactiva uno para liberar espacio.
+        </p>
+      )}
+      {destacar && (
+        <Campo titulo="Prioridad en el boleto">
+          <select
+            name="prioridad"
+            defaultValue={
+              p?.prioridad ??
+              prioridades.find((n) => !ocupados.some((x) => x.prioridad === n))
+            }
+          >
+            {prioridades.map((n) => {
+              const otro = ocupados.find((x) => x.prioridad === n);
+              return (
+                <option key={n} value={n} disabled={!!otro && !p?.prioridad}>
+                  {n}
+                  {otro
+                    ? " · " +
+                      otro.nombre +
+                      (p?.prioridad ? " (intercambiar)" : "")
+                    : ""}
+                </option>
+              );
+            })}
+          </select>
+        </Campo>
+      )}
+      <Campo titulo="Foto del premio · 800 × 800 px recomendados">
+        <input
+          type="file"
+          name="foto"
+          accept="image/png,image/jpeg,image/webp"
+        />
+      </Campo>
+    </Formulario>
+  );
+}
+export function PanelRifa({
+  rifa: r,
+  version,
+  recargar,
+}: {
+  rifa: Rifa;
+  version: number;
+  recargar: () => void;
+}) {
+  const [tab, set] = useState("Premios"),
+    [premios, guardar] = useState<Premio[]>([]),
+    [err, error] = useState("");
+  useEffect(() => {
+    let vivo = true;
+    filas<Premio>("vw_premios_rifa", ["id_rifa", r.id_rifa], "orden_sorteo")
+      .then((p) => {
+        if (vivo) {
+          guardar(p);
+          error("");
+        }
+      })
+      .catch((e) => error(e.message));
+    return () => {
+      vivo = false;
+    };
+  }, [r.id_rifa, version]);
+  return (
+    <>
+      <p className="ceja">{r.estado.toUpperCase().replace("_", " ")}</p>
+      <h1>{r.nombre}</h1>
+      <p>
+        {fecha(r.fecha_sorteo)} · {soles(r.precio_numero)} por número
+      </p>
+      {r.imagen_premio_url && (
+        <img
+          className="foto"
+          src={r.imagen_premio_url}
+          alt="Premio de la rifa"
+        />
+      )}
+      <div className="pestanas">
+        {[
+          "Premios",
+          "Números y ventas",
+          "Boletos",
+          "Sorteo",
+          "Configuración",
+        ].map((s) => (
+          <button key={s} aria-pressed={s === tab} onClick={() => set(s)}>
+            {s}
+          </button>
+        ))}
+      </div>
+      {err && <p role="alert">{err}</p>}
+      {tab === "Configuración" ? (
+        r.estado === "activa" ? (
+          <>
+            <EditarRifa r={r} alGuardar={recargar} />
+            <Accion
+              texto="Eliminar rifa sin movimientos"
+              ejecutar={async () => {
+                if (confirm("¿Eliminar esta rifa y sus premios?")) {
+                  await rpc("eliminar_rifa_sin_movimientos", {
+                    p_rifa: r.id_rifa,
+                  });
+                  recargar();
+                }
+              }}
+            />
+          </>
+        ) : (
+          <p>La configuración quedó fijada al iniciar el sorteo.</p>
+        )
+      ) : tab === "Premios" ? (
+        <>
+          <h2>Premios en orden de sorteo</h2>
+          {premios.map((p) => (
+            <details key={p.id_premio_rifa}>
+              <summary>
+                {p.orden_sorteo}. {p.nombre} · extracción{" "}
+                {p.numero_extraccion_ganadora}
+                {p.es_sorpresa ? " · Sorpresa" : ""}
+              </summary>
+              {p.imagen_url && (
+                <img className="foto" src={p.imagen_url} alt={p.nombre} />
+              )}
+              <p>{p.descripcion}</p>
+              {r.estado === "activa" && (
+                <>
+                  <EditorPremio
+                    key={JSON.stringify(p)}
+                    premios={premios}
+                    r={r}
+                    p={p}
+                    siguiente={1}
+                    recargar={recargar}
+                  />
+                  <Accion
+                    texto="Eliminar premio"
+                    ejecutar={async () => {
+                      if (confirm("¿Eliminar este premio?")) {
+                        await rpc("eliminar_premio", {
+                          p_rifa: r.id_rifa,
+                          p_premio: p.id_premio_rifa,
+                        });
+                        recargar();
+                      }
+                    }}
+                  />
+                </>
+              )}
+            </details>
+          ))}
+          {r.estado === "activa" && (
+            <section>
+              <h3>Agregar premio</h3>
+              <EditorPremio
+                key={premios.length}
+                premios={premios}
+                r={r}
+                siguiente={(premios.at(-1)?.orden_sorteo ?? 0) + 1}
+                recargar={recargar}
+              />
+            </section>
+          )}
+        </>
+      ) : tab === "Números y ventas" ? (
+        <Operaciones r={r} version={version} recargar={recargar} />
+      ) : tab === "Sorteo" ? (
+        <Sorteo r={r} premios={premios} version={version} recargar={recargar} />
+      ) : (
+        <Boletos
+          premios={premios}
+          r={r}
+          version={version}
+          recargar={recargar}
+        />
+      )}
+    </>
+  );
+}
+import { normalizar } from "./seleccion-persona";
+export function Participantes({
+  version,
+  recargar,
+}: {
+  version: number;
+  recargar: () => void;
+}) {
+  const [ps, set] = useState<Persona[]>([]),
+    [busca, buscar] = useState(""),
+    [id, abrir] = useState(""),
+    [edicion, editar] = useState(""),
+    [hist, guardar] = useState<string[]>([]),
+    [err, error] = useState("");
+  useEffect(() => {
+    filas<Persona>("persona", undefined, "id_persona")
+      .then(set)
+      .catch((e) => error(e.message));
+  }, [version]);
+  useEffect(() => {
+    let vivo = true;
+    async function ficha() {
+      if (!id) return;
+      const ventas = await filas<Fila>(
+        "vw_detalle_ventas",
+        ["id_persona", id],
+        "id_detalle_venta",
+      );
+      const rifas = await filas<Rifa>("rifa", undefined, "id_rifa");
+      const resultados = await filas<Fila>(
+        "vw_historial_ganadores",
+        ["id_persona", id],
+        "fecha_resultado",
+      );
+      const mostrar = (i: unknown) =>
+        rifas.find((r) => r.id_rifa === i)?.nombre || "Rifa";
+      const textos: string[] = [];
+      for (const venta of new Set(ventas.map((v) => String(v.id_venta)))) {
+        const lineas = ventas.filter((v) => v.id_venta === venta);
+        const pagos = await filas<Fila>("pago", ["id_venta", venta], "id_pago");
+        const saldo =
+          (Math.round(Number(lineas[0].total) * 100) -
+            pagos.reduce(
+              (s, p) => s + Math.round(Number(p.importe) * 100),
+              0,
+            )) /
+          100;
+        textos.push(
+          mostrar(lineas[0].id_rifa) +
+            " · " +
+            fecha(String(lineas[0].fecha_venta)) +
+            " · " +
+            lineas[0].estado +
+            " · números " +
+            lineas.map((v) => numero(Number(v.numero))).join(", ") +
+            " · " +
+            "Total " +
+            soles(Number(lineas[0].total)) +
+            (lineas[0].estado === "pendiente"
+              ? " · Saldo " + soles(saldo)
+              : ""),
+        );
+        pagos.forEach((p) =>
+          textos.push(
+            "Pago " + p.medio_pago + " · " + soles(Number(p.importe)),
+          ),
+        );
+        for (const v of lineas) {
+          const bs = await filas<Boleto>("boleto", [
+            "id_detalle_venta",
+            String(v.id_detalle_venta),
+          ]);
+          bs.forEach((b) =>
+            textos.push(
+              "Boleto " +
+                numero(Number(v.numero)) +
+                " · " +
+                b.estado +
+                " · " +
+                b.token_publico,
+            ),
+          );
+        }
+      }
+      resultados.forEach((p) =>
+        textos.push(
+          mostrar(p.id_rifa) +
+            " · Ganó " +
+            p.premio +
+            " con " +
+            numero(Number(p.numero)),
+        ),
+      );
+      if (vivo) guardar(textos);
+    }
+    guardar([]);
+    void ficha().catch((e) => error(e.message));
+    return () => {
+      vivo = false;
+    };
+  }, [id, version]);
+  const [limite, ampliar] = useState(20);
+  const filtrados = ps
+    .filter((p) =>
+      normalizar(nombre(p) + " " + (p.telefono || "")).includes(
+        normalizar(busca),
+      ),
+    )
+    .sort((a, b) => nombre(a).localeCompare(nombre(b), "es"));
+  const actual = ps.find((p) => p.id_persona === id);
+  function enfocarFicha() {
+    requestAnimationFrame(() =>
+      document
+        .getElementById("ficha-participante")
+        ?.scrollIntoView({ block: "start" }),
+    );
+  }
+  async function eliminar(p: Persona) {
+    if (!confirm("¿Eliminar a " + nombre(p) + " del directorio?")) return;
+    try {
+      await rpc("eliminar_persona", { p_persona: p.id_persona });
+      if (id === p.id_persona) abrir("");
+      if (edicion === p.id_persona) editar("");
+      error("");
+      recargar();
+    } catch (e) {
+      error((e as Error).message);
+    }
+  }
+  function acciones(p: Persona) {
+    return (
+      <div className="acciones-persona">
+        <button
+          onClick={() => {
+            editar(p.id_persona);
+            abrir(p.id_persona);
+            enfocarFicha();
+          }}
+        >
+          Editar
+        </button>
+        <button onClick={() => eliminar(p)}>Eliminar</button>
+      </div>
+    );
+  }
+  return (
+    <>
+      <h1>Participantes</h1>
+      <p>{ps.length} participantes registrados</p>
+      <Campo titulo="Buscar por nombre o teléfono">
+        <input
+          type="search"
+          value={busca}
+          onChange={(e) => {
+            buscar(e.target.value);
+            ampliar(20);
+          }}
+        />
+      </Campo>
+      {err && <p role="alert">{err}</p>}
+      <div className="directorio">
+        {filtrados.slice(0, limite).map((p) => (
+          <div className="persona-fila" key={p.id_persona}>
+            <div>
+              <strong>{nombre(p)}</strong>
+              <small>{p.telefono || "Sin teléfono"}</small>
+            </div>
+            <div className="acciones-persona">
+              <button
+                onClick={() => {
+                  abrir(p.id_persona);
+                  editar("");
+                  enfocarFicha();
+                }}
+                aria-label={"Consultar a " + nombre(p)}
+              >
+                Consultar
+              </button>
+              {acciones(p)}
+            </div>
+          </div>
+        ))}
+      </div>
+      {!filtrados.length && <p>Sin participantes que mostrar.</p>}
+      {filtrados.length > limite && (
+        <button onClick={() => ampliar(limite + 20)}>
+          Mostrar más participantes
+        </button>
+      )}
+      {actual && (
+        <section id="ficha-participante">
+          <h2>{nombre(actual)}</h2>
+          <p>{actual.telefono}</p>
+          {acciones(actual)}
+          {edicion === actual.id_persona && (
+            <Formulario
+              key={edicion}
+              accion="Guardar cambios"
+              guardar={async (f) => {
+                const nombres = campo(f, "nombres");
+                if (!nombres) throw Error("Escribe el nombre.");
+                await rpc("guardar_persona", {
+                  p_persona: edicion,
+                  p_nombres: nombres,
+                  p_apellidos: campo(f, "apellidos") || null,
+                  p_telefono: campo(f, "telefono") || null,
+                });
+                editar("");
+                error("");
+                recargar();
+              }}
+            >
+              <Campo titulo="Nombres">
+                <input name="nombres" required defaultValue={actual.nombres} />
+              </Campo>
+              <Campo titulo="Apellidos">
+                <input name="apellidos" defaultValue={actual.apellidos || ""} />
+              </Campo>
+              <Campo titulo="Teléfono">
+                <input
+                  name="telefono"
+                  type="tel"
+                  defaultValue={actual.telefono || ""}
+                />
+              </Campo>
+              <button type="button" onClick={() => editar("")}>
+                Cancelar
+              </button>
+            </Formulario>
+          )}
+          {hist.length ? (
+            hist.map((s, i) => <p key={i}>{s}</p>)
+          ) : (
+            <p>Sin movimientos registrados.</p>
+          )}
+        </section>
+      )}
+      <section>
+        <h2>Registrar participante</h2>
+        <Formulario
+          limpiar
+          guardar={async (f) => {
+            const n = campo(f, "nombres"),
+              a = campo(f, "apellidos"),
+              tel = campo(f, "telefono");
+            if (
+              ps.some(
+                (p) =>
+                  nombre(p).toLowerCase() ===
+                    [n, a].filter(Boolean).join(" ").toLowerCase() ||
+                  (tel && p.telefono === tel),
+              ) &&
+              !confirm(
+                "Ya existe una coincidencia. ¿Crear una persona distinta?",
+              )
+            )
+              throw Error("Selecciona la persona existente.");
+            const nuevo = await rpc<string>("guardar_persona", {
+              p_nombres: n,
+              p_apellidos: a || null,
+              p_telefono: tel || null,
+            });
+            abrir(nuevo);
+            recargar();
+          }}
+        >
+          <Campo titulo="Nombres">
+            <input name="nombres" required />
+          </Campo>
+          <Campo titulo="Apellidos">
+            <input name="apellidos" />
+          </Campo>
+          <Campo titulo="Teléfono">
+            <input name="telefono" type="tel" />
+          </Campo>
+        </Formulario>
+      </section>
+    </>
+  );
+}
+export type { Numero };

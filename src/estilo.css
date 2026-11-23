@@ -1,0 +1,894 @@
+@import "tailwindcss";
+:root {
+  font-family: Inter, "Segoe UI", sans-serif;
+  color-scheme: light;
+  --bg: #f8f5eb;
+  --panel: #fffdf7;
+  --ink: #20372d;
+  --muted: #536658;
+  --line: #d9dfce;
+  --accent: #226343;
+  --soft: #e7efda;
+  color: var(--ink);
+  background: var(--bg);
+}
+:root[data-tema="oscuro"] {
+  color-scheme: dark;
+  --bg: #101d17;
+  --panel: #1c2c23;
+  --ink: #f1f2df;
+  --muted: #c0ceba;
+  --line: #405447;
+  --accent: #a5d8ab;
+  --soft: #2b4131;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button,
+a {
+  cursor: pointer;
+}
+button {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 0.57rem 0.85rem;
+  border-radius: 9px;
+  text-align: left;
+}
+button:hover {
+  border-color: var(--accent);
+}
+button:disabled {
+  opacity: 0.62;
+  cursor: default;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid #6eac70;
+  outline-offset: 2px;
+}
+.principal {
+  background: #246444;
+  color: white;
+  border-color: #246444;
+  font-weight: 650;
+}
+.app {
+  display: grid;
+  grid-template-columns: 215px minmax(0, 1fr);
+  min-height: 100vh;
+}
+aside {
+  display: flex;
+  flex-direction: column;
+  padding: 30px 16px;
+  background: #163828;
+  color: white;
+  gap: 44px;
+}
+.marca {
+  font-size: 25px;
+  font-weight: 750;
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  letter-spacing: -1px;
+}
+.marca svg {
+  color: #d5dc95;
+}
+.pie,
+nav {
+  display: grid;
+  gap: 8px;
+}
+.pie {
+  margin-top: auto;
+}
+aside button {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  background: transparent;
+  border: 0;
+}
+aside button[aria-current],
+aside button:hover {
+  background: #31553f;
+}
+main {
+  padding: 0 clamp(16px, 4vw, 64px) 56px;
+  min-width: 0;
+}
+header,
+.titulo,
+.fila {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+header {
+  border-bottom: 1px solid var(--line);
+  padding: 20px 0;
+  margin-bottom: 28px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+h1,
+h2,
+h3,
+strong {
+  font-weight: 700;
+}
+h1 {
+  font-size: clamp(1.85rem, 4vw, 2.75rem);
+  letter-spacing: -0.05em;
+  line-height: 1.2;
+  margin: 12px 0 22px;
+}
+h2 {
+  font-size: 1.35rem;
+  margin: 24px 0 12px;
+}
+h3 {
+  font-size: 1.1rem;
+  margin: 8px 0;
+}
+p {
+  margin: 8px 0;
+  color: var(--muted);
+}
+.ceja,
+small {
+  font-weight: 650;
+  color: var(--accent);
+}
+.ceja {
+  letter-spacing: 0.15em;
+  font-size: 0.68rem;
+}
+section,
+article,
+.tarjeta,
+details {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  padding: 18px;
+  margin: 12px 0;
+}
+.metricas,
+.tarjetas,
+.columnas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.metricas strong,
+.tarjeta span {
+  display: block;
+}
+.metricas strong {
+  font-size: 1.6rem;
+}
+.metricas small {
+  text-transform: capitalize;
+}
+.tarjeta {
+  padding: 20px;
+}
+progress {
+  width: 100%;
+  accent-color: #438757;
+}
+fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  border: 0;
+  min-width: 0;
+  padding: 4px 0;
+}
+label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+input,
+select,
+textarea {
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px;
+  max-width: 100%;
+  min-width: 0;
+}
+input[type="checkbox"] {
+  width: 19px;
+  height: 19px;
+}
+form span[role="status"] {
+  font-size: 0.85rem;
+}
+.pestanas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.pestanas [aria-pressed="true"] {
+  background: var(--soft);
+  border-color: var(--accent);
+}
+.numeros {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(54px, 1fr));
+  gap: 7px;
+  margin: 14px 0;
+}
+.numeros button {
+  text-align: center;
+}
+.numeros [data-estado="vendido"] {
+  background: #dce4da;
+  color: #304837;
+}
+.numeros [data-estado="reservado"] {
+  background: #ffe8b7;
+  color: #584009;
+}
+.numeros [aria-pressed="true"] {
+  background: #246444;
+  color: white;
+}
+.acceso {
+  max-width: 550px;
+  margin: 12vh auto;
+  padding: 24px;
+}
+.acceso section {
+  padding: 32px;
+}
+.acceso fieldset,
+.acceso label {
+  display: grid;
+  width: 100%;
+}
+.acceso .principal {
+  text-align: center;
+}
+.transmision {
+  text-align: center;
+}
+.bola {
+  font-size: 4.5rem;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  color: var(--accent);
+  animation: revelar 0.55s ease-out;
+}
+@keyframes revelar {
+  from {
+    opacity: 0.1;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.boleto {
+  width: min(100%, 540px);
+  color: #fff;
+  background-color: #194735;
+  background-size: cover;
+  background-position: center;
+  border-radius: 18px;
+  padding: 26px;
+  overflow-wrap: anywhere;
+}
+.boleto p,
+.boleto small {
+  color: inherit;
+}
+.boleto.navidad {
+  background-color: #7c2333;
+}
+.boleto.verano {
+  background-color: #186b73;
+}
+.boleto img {
+  width: 100px;
+  background: #fff;
+  border-radius: 6px;
+}
+.boleto strong {
+  font-size: 3rem;
+}
+.boleto a,
+a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+.publico {
+  max-width: 720px;
+  margin: 8vh auto;
+}
+.acciones {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.lista {
+  border-top: 1px solid var(--line);
+  padding: 10px 0;
+}
+.foto {
+  width: 140px;
+  height: 85px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+@media (max-width: 760px) {
+  .app {
+    display: block;
+  }
+  aside {
+    gap: 10px;
+    padding: 12px 16px;
+  }
+  nav,
+  .pie {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+  .pie {
+    margin: 0;
+  }
+  aside button {
+    font-size: 0.8rem;
+    padding: 6px;
+  }
+  .marca {
+    font-size: 21px;
+  }
+  header {
+    margin-bottom: 14px;
+  }
+  .titulo {
+    align-items: start;
+  }
+  .metricas {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  fieldset > * {
+    max-width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+  }
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 90% 0%, var(--soft), transparent 46rem),
+    var(--bg);
+}
+aside {
+  background: linear-gradient(165deg, #244833, #102e23 72%);
+}
+.marca svg {
+  background: #36593e;
+  padding: 5px;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+}
+.titulo h1,
+.acceso h1,
+.publico h1 {
+  font-family: Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -0.045em;
+}
+button,
+input,
+select,
+textarea {
+  border-radius: 10px;
+}
+button {
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+.principal {
+  box-shadow: 0 2px 5px #13322220;
+}
+.principal:hover {
+  background: #1c5036;
+}
+section,
+article,
+details,
+.tarjeta {
+  box-shadow: 0 4px 18px #182b1a09;
+}
+.metricas article {
+  border-top: 3px solid #83995f;
+}
+.metricas article:nth-child(2) {
+  border-top-color: #c69a55;
+}
+.metricas strong {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+.pestanas {
+  padding: 5px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  width: fit-content;
+  max-width: 100%;
+}
+.pestanas button {
+  border-color: transparent;
+}
+.pestanas [aria-pressed="true"] {
+  color: var(--accent);
+  font-weight: 650;
+}
+.tarjeta:hover {
+  background: var(--soft);
+}
+input {
+  accent-color: var(--accent);
+}
+.editor-plantilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: clamp(16px, 3vw, 36px);
+  margin-top: 18px;
+}
+.editor-plantilla form > fieldset {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+.catalogo {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.catalogo legend {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+.opcion-diseno {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--panel);
+  gap: 0;
+}
+.opcion-diseno span:last-child {
+  text-transform: capitalize;
+  font-weight: 650;
+  padding: 0.45rem 0.55rem;
+}
+.opcion-diseno input {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  width: 16px;
+  height: 16px;
+  accent-color: #265737;
+}
+.opcion-diseno:has(input:checked) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  color: var(--accent);
+}
+.opcion-diseno:focus-within {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.miniatura {
+  height: 44px;
+  display: block;
+}
+.opciones-boleto {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0 12px;
+}
+.interruptor {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 0;
+  color: var(--ink);
+  cursor: pointer;
+}
+.interruptor + .interruptor {
+  border-top: 1px solid var(--line);
+}
+.interruptor input[type="checkbox"] {
+  appearance: none;
+  width: 40px;
+  height: 24px;
+  border-radius: 20px;
+  cursor: pointer;
+  padding: 2px;
+  background: #6d796d;
+  border: 0;
+}
+.interruptor input:checked {
+  background: #387249;
+}
+.interruptor input::before {
+  content: "";
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px #0004;
+}
+.interruptor input:checked::before {
+  transform: translateX(16px);
+}
+.vista-plantilla {
+  min-width: 0;
+  border-radius: 16px;
+  background: var(--soft);
+  padding: 16px;
+}
+.vista-plantilla h3 {
+  margin: 0 0 12px;
+}
+.vista-plantilla section {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.boleto {
+  isolation: isolate;
+  position: relative;
+  overflow: hidden;
+  padding: clamp(20px, 4vw, 32px);
+  border-radius: 18px;
+  color: #fffaf0;
+}
+.elegante.miniatura,
+.elegante.boleto {
+  background-color: #193c2e;
+  background-image:
+    repeating-radial-gradient(
+      ellipse at 105% -15%,
+      transparent 0 21px,
+      #c5b06c48 22px,
+      transparent 24px 32px
+    ),
+    linear-gradient(110deg, #162f24, #30523c);
+}
+.navidad.miniatura,
+.navidad.boleto {
+  background-color: #7c2938;
+  background-image:
+    radial-gradient(
+      ellipse at 92% 12%,
+      #ffe2a4 0 2%,
+      #b54e4a 2.3% 6%,
+      transparent 6.3%
+    ),
+    radial-gradient(ellipse at 77% -2%, #d2a662 0 7%, transparent 7.3%),
+    repeating-linear-gradient(135deg, transparent 0 22px, #ffffff09 22px 23px),
+    linear-gradient(115deg, #532337, #90383c);
+}
+.verano.miniatura,
+.verano.boleto {
+  background-color: #12666b;
+  background-image:
+    radial-gradient(circle at 85% 16%, #ffc578 0 7%, transparent 7.3%),
+    radial-gradient(
+      ellipse at 100% 125%,
+      #82cfb9 0 22%,
+      #45a99b 22.4% 30%,
+      #1e847c 30.3% 38%,
+      transparent 38.4%
+    ),
+    linear-gradient(105deg, #134a51, #20756e);
+}
+.boleto h2 {
+  font-family: Georgia, serif;
+  font-weight: 500;
+  font-size: clamp(1.45rem, 3.5vw, 2.15rem);
+  line-height: 1.15;
+  margin: 18px 0;
+  max-width: 83%;
+}
+.numero-boleto {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  border-top: 1px dashed #ffffff72;
+  padding-top: 12px;
+  margin-top: 15px;
+}
+.numero-boleto small {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.66rem;
+}
+.numero-boleto strong {
+  font:
+    600 clamp(2.8rem, 7vw, 4rem)/1.1 Georgia,
+    serif;
+  font-variant-numeric: tabular-nums;
+}
+.boleto h3 {
+  font-size: 1.15rem;
+}
+.boleto img {
+  margin: 12px 0 6px;
+}
+.codigo-boleto {
+  display: block;
+  font:
+    500 0.7rem/1.5 ui-monospace,
+    monospace;
+  letter-spacing: 0.04em;
+  margin-top: 12px;
+}
+
+.cabecera-boleto {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.cabecera-boleto div {
+  min-width: 0;
+}
+.cabecera-boleto h2 {
+  max-width: 100%;
+  margin: 5px 0;
+}
+.cabecera-boleto h3 {
+  font-size: 0.88rem;
+  margin: 2px 0;
+}
+.boleto .imagen-rifa {
+  width: clamp(60px, 18vw, 100px);
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: cover;
+  flex: none;
+  margin: 0;
+  border: 2px solid #ffffffa8;
+  border-radius: 14px;
+}
+.premios-boleto:not(:empty) {
+  border-block: 1px solid #ffffff55;
+  padding: 10px 0;
+  margin: 12px 0;
+}
+.premios-boleto ol {
+  list-style: decimal inside;
+  margin: 4px 0;
+  padding: 0;
+}
+.premios-boleto li {
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+.directorio,
+.selector-persona {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin: 12px 0;
+}
+.selector-persona {
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+.persona-fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.persona-fila:last-child {
+  border-bottom: 0;
+}
+.persona-fila strong,
+.persona-fila small {
+  display: block;
+}
+.persona-fila small {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+@media print {
+  body:has(.boleto) .acciones,
+  body:has(.boleto) aside {
+    display: none;
+  }
+  .boleto {
+    break-inside: avoid;
+    print-color-adjust: exact;
+  }
+}
+
+/* El boleto conserva las mismas proporciones en la vista y en el archivo. */
+.boleto {
+  width: 900px;
+  min-height: 400px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  border-radius: 22px;
+  background-size: cover;
+}
+.cuerpo-boleto {
+  padding: 28px 32px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+}
+.cuerpo-boleto .cabecera-boleto h2 {
+  font-size: 34px;
+}
+.cuerpo-boleto .numero-boleto {
+  margin-top: 12px;
+  padding-top: 8px;
+}
+.cuerpo-boleto .numero-boleto strong {
+  font-size: 64px;
+}
+.talon-boleto {
+  padding: 24px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 10px;
+  border-left: 2px dashed #fffa;
+  background: #112c2333;
+}
+.talon-boleto .premios-boleto {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.talon-boleto .premios-boleto ol {
+  list-style: none;
+  display: grid;
+  gap: 5px;
+  margin: 7px 0;
+}
+.talon-boleto li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 15px;
+}
+.talon-boleto .producto-boleto {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+  flex: none;
+  margin: 0;
+  border-radius: 7px;
+  background: #fff;
+}
+.talon-boleto .qr-boleto {
+  width: 78px;
+  height: 78px;
+  align-self: flex-end;
+  margin: 0;
+}
+.lote-boletos > .soporte-boleto {
+  background: transparent;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  box-shadow: none;
+}
+.lote-boletos > .soporte-boleto + .soporte-boleto {
+  margin-top: 8px;
+}
+.publico {
+  max-width: 1040px;
+}
+@media (min-width: 760px) {
+  .editor-plantilla {
+    grid-template-columns: minmax(265px, 0.85fr) minmax(340px, 1.6fr);
+  }
+}
+
+.pie-transmision {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+.pie-transmision a {
+  color: inherit;
+  font-size: 13px;
+  text-align: right;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.acciones-persona {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.acciones-persona button {
+  font-size: 0.82rem;
+  padding: 5px 8px;
+}
+.transmision form fieldset {
+  justify-content: center;
+}
+.foto-sorteo {
+  width: min(100%, 320px);
+  max-height: 220px;
+  object-fit: contain;
+  margin: 12px auto;
+  display: block;
+  border-radius: 14px;
+}
+.transmision .bola {
+  font-size: clamp(2rem, 5vw, 4rem);
+  overflow-wrap: anywhere;
+}

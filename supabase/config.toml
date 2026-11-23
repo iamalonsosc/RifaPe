@@ -1,0 +1,5 @@
+project_id = "rifafacil"
+[auth]
+enable_signup = false
+[functions.consultar-boleto]
+verify_jwt = false
