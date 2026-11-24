@@ -63,7 +63,7 @@ export interface Ticket {
   destino?: string;
 }
 export interface Boleto {
-  id_detalle_venta: string;
+  id_detalle_venta: string | null;
   token_publico: string;
   estado: string;
   datos_emision_historicos: Ticket;

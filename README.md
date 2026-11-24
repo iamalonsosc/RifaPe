@@ -1,6 +1,6 @@
-# RifaFácil 1.0
+# RifaPes 1.0
 
-Aplicación privada para una administradora. Cada rifa tiene participantes, premios, reservas, ventas en soles, pagos manuales y un sorteo oficial. Cada número pagado recibe un boleto individual. La consulta pública funciona en `/boleto/:token`.
+Aplicación privada para hasta dos administradoras, cada una con sus propias rifas. Cada rifa tiene participantes, premios, reservas, ventas en soles, pagos manuales y un sorteo oficial. Cada número pagado recibe un boleto individual. La consulta pública funciona en `/boleto/:token`.
 
 ## 1. Preparar Supabase
 
@@ -23,7 +23,13 @@ En **SQL Editor → New query**, pega y ejecuta **un archivo completo a la vez**
 | 9 | 20261123000900_fotos_boleto.sql | Fotos opcionales de premios |
 | 10 | 20261123001000_eliminar_persona.sql | Eliminar participantes sin historial de ventas o reservas |
 
-Si ya aplicaste la migración 9, ejecuta únicamente la 10. En las rifas anteriores se seleccionan inicialmente hasta cinco premios según el orden del sorteo. En rifas activas puedes cambiar esa selección desde **Premios**. Al mover un destacado a una prioridad ocupada, ambos intercambian sus posiciones en el boleto.
+| 11 | 20261123001100_dos_administradoras.sql | Segunda administradora y auditoría por propietaria |
+ 
+| 12 | 20261123001200_emision_y_premios.sql | Emisión desde reservas o ventas, prioridades sin tope, responsable de abonos y puestos |
+
+Si ya aplicaste la migración 11, ejecuta únicamente la 12. Si terminaste en la 10, aplica la 11 y después la 12. En las rifas anteriores se seleccionan inicialmente hasta cinco premios según el orden del sorteo. En rifas activas puedes cambiar esa selección desde **Premios**. Al mover un destacado a una prioridad ocupada, ambos intercambian sus posiciones en el boleto.
+
+Para WhatsApp abre un boleto, personaliza el mensaje y prepara la imagen. El selector del dispositivo permite elegir WhatsApp si admite archivos. También puedes descargar el PNG y adjuntarlo al mensaje preparado.
 
 El boleto muestra el nombre y número de emisión, junto a la fecha, foto y premios vigentes. El teléfono aparece en la copia que genera la administradora. La consulta pública por QR omite el teléfono. Descarga de nuevo los archivos para distribuir los cambios.
 
@@ -33,9 +39,9 @@ La instalación espera que pgcrypto esté en el esquema `extensions` estándar d
 
 1. En **Authentication**, habilita correo y contraseña y desactiva el registro de nuevos usuarios. La configuración local equivalente está en `supabase/config.toml`.
 2. En **Authentication → Users**, crea tu cuenta con correo confirmado y copia el **User UID**.
-3. Abre `supabase/manual/01_autorizar_administradora.sql`, reemplaza el UUID de ceros por ese UID y ejecútalo en SQL Editor. La autorización usa metadatos de aplicación controlados por el servidor. Un índice limita el sistema a un perfil.
+3. Abre `supabase/manual/01_autorizar_administradora.sql`, reemplaza el UUID de ceros por ese UID y ejecútalo en SQL Editor. La autorización usa metadatos de aplicación controlados por el servidor. Para autorizar a la segunda administradora en el mismo sitio, repite los pasos 2 y 3 con el UID de su cuenta. Ambas usan el mismo proyecto de Supabase y cada una ve únicamente sus datos.
 4. Habilita la integración **Cron** de Supabase. Ejecuta `supabase/manual/02_programar_reservas.sql` para liberar reservas vencidas cada minuto. Las asignaciones también comprueban el vencimiento dentro de la transacción.
-5. Ejecuta `supabase/manual/03_verificar.sql`. Debes ver RLS activo en las tablas de RifaFácil, un perfil, un trabajo Cron activo y el bucket `rifafacil-imagenes` con un límite de 5 MiB. El bucket público está destinado a imágenes de premios y fondos. Sube los recursos desde la cuenta autorizada.
+5. Ejecuta `supabase/manual/03_verificar.sql`. Debes ver RLS activo en las tablas de RifaPes, uno o dos perfiles autorizados, un trabajo Cron activo y el bucket `rifafacil-imagenes` con un límite de 5 MiB. El bucket público está destinado a imágenes de premios y fondos. Sube los recursos desde la cuenta autorizada.
 
 Opcionalmente, en un proyecto de desarrollo, `supabase/desarrollo/semilla.sql` crea una persona y una rifa de ejemplo. Ejecútalo una vez. Las pruebas automáticas usan su propia base temporal.
 
@@ -111,8 +117,16 @@ Las pruebas de PostgreSQL necesitan poder iniciar un proceso temporal, escribir 
 
 ## Decisiones de negocio
 
-- Un número vendido queda ocupado desde la creación de la venta. Solo el pago completo habilita sus boletos y su participación. El precio de cada línea se conserva. Una cancelación pagada crea devoluciones pendientes por pago. Registrar la devolución realizada descuenta el importe de la recaudación neta.
+- Un número vendido queda ocupado desde la creación de la venta. Puedes emitir desde una reserva o desde una venta con cualquier saldo. Al convertir la reserva se conserva su QR. Solo una venta pagada participa en el sorteo. El precio de cada línea se conserva. Una cancelación pagada crea devoluciones pendientes por pago. Registrar la devolución realizada descuenta el importe de la recaudación neta.
 - Las operaciones de cada rifa toman un bloqueo sobre su fila. Los cambios de asignación, los detalles y el estado de cada número se confirman juntos. La base verifica que premio, participante, número y sorteo correspondan a relaciones compatibles.
 - Al comenzar se fija el conjunto de participaciones pagadas y se bloquea la edición de premios y reglas. Para un premio por persona, la validación considera el peor caso de que ganen primero las personas con más números. Cada extracción usa bytes aleatorios criptográficos en PostgreSQL y se confirma junto con su resultado. El navegador anima el resultado ya persistido.
-- Las extracciones son individuales. La modalidad opcional de posiciones y la ejecución automática secuencial quedan fuera de esta entrega. Cada premio obligatorio admite un número configurable de extracciones.
+- En Premios puedes agregar un sorteo por puestos. Se crean tres premios consecutivos, del tercero al primero. Cada puesto admite foto y usa el mismo registro oficial. Cada selección se inicia manualmente.
 - Las imágenes subidas son públicas. Los participantes, ventas y pagos tienen políticas privadas. El nombre impreso en el boleto procede de su emisión. El enlace y el lugar de transmisión reflejan la configuración vigente.
+
+### Envío individual a WhatsApp
+
+En Boletos selecciona el boleto emitido y abre **Compartir por WhatsApp**. El sistema usa el teléfono del participante; puedes corregir el destino para ese envío. Para guardarlo permanentemente, edita la ficha del participante. Prepara la imagen, descarga el PNG y abre el chat con el mensaje preparado. Adjunta el archivo antes de enviar. El enlace público del boleto mantiene privado el teléfono del cliente.
+
+En Android, iOS y escritorio, la opción nativa aparece si el navegador admite compartir ese archivo y el texto por HTTPS. El dispositivo determina las aplicaciones disponibles y la aplicación receptora puede descartar parte del texto. El chat directo funciona en WhatsApp Web o en la aplicación asociada por el dispositivo. [Ayuda de WhatsApp](https://faq.whatsapp.com/5913398998672934) · [Web Share API](https://www.w3.org/TR/web-share/)
+
+Un envío automático de imagen y mensaje al número del cliente requeriría una integración de servidor con WhatsApp Business Platform, cuenta empresarial de WhatsApp, número emisor registrado, identificador de número y token con permiso whatsapp_business_messaging. Requiere consentimiento, y fuera de la ventana de atención de 24 horas se necesitan plantillas aprobadas. Pueden aplicarse cargos según mercado y categoría. Para confirmar entrega se necesitan notificaciones de estado. La aplicación actual usa las opciones del navegador. [Documentación empresarial de Meta](https://developers.facebook.com/documentation/business-messaging/whatsapp/overview)

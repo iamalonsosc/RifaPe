@@ -892,3 +892,462 @@ input {
   font-size: clamp(2rem, 5vw, 4rem);
   overflow-wrap: anywhere;
 }
+
+.talon-boleto {
+  position: relative;
+  min-height: 0;
+}
+.talon-boleto:has(.premios-boleto) {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+.talon-boleto .premios-boleto {
+  position: relative;
+  contain: size;
+  overflow: hidden;
+  min-width: 0;
+}
+.talon-boleto .premios-boleto ol {
+  align-content: start;
+}
+.talon-boleto li span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.aviso-premios {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+}
+.compartir {
+  flex-basis: 100%;
+  min-width: 0;
+}
+.financiero {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 8px;
+  color: #313d42;
+  background: #e3e7e9;
+}
+.financiero.parcial {
+  background: #ffe5a7;
+  color: #654100;
+}
+.financiero.pagado {
+  background: #c5ecd6;
+  color: #16452b;
+}
+
+.talon-boleto:has(.premios-boleto) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.transmision:fullscreen {
+  overflow: auto;
+  background: #153a2d;
+  color: #fff;
+  padding: 4vh 5vw;
+}
+@keyframes celebrar {
+  from {
+    transform: scale(0.8);
+    filter: brightness(1.6);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .celebracion {
+    animation: none;
+  }
+}
+
+.transmision:not(:fullscreen) .ganadores-pantalla {
+  display: none;
+}
+
+.pelota-seleccionada {
+  display: inline-grid;
+  place-items: center;
+  vertical-align: middle;
+  min-width: 2.35em;
+  aspect-ratio: 1;
+  padding: 0 0.16em;
+  border-radius: 50%;
+  color: #344035;
+  background: radial-gradient(circle at 34% 26%, #fffdf1, #e9cf8a 68%, #a88043);
+  box-shadow:
+    inset -2px -3px 9px #66492140,
+    0 4px 12px #142b2133;
+  font-variant-numeric: tabular-nums;
+}
+
+.etiqueta,
+.accion-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.campo-ayuda {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.etiqueta label {
+  margin: 0;
+}
+.icono-ayuda {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  padding: 0 !important;
+  color: var(--muted);
+  background: transparent !important;
+  border: 0;
+  cursor: help;
+  vertical-align: middle;
+}
+.globo-ayuda {
+  position: fixed;
+  z-index: 9999;
+  width: min(260px, calc(100vw - 16px));
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #1e293b;
+  color: white;
+  font: normal 13px/1.45 system-ui;
+  box-shadow: 0 5px 18px #0004;
+  animation: aparecer 0.15s ease;
+}
+@keyframes aparecer {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.resumen-pagos {
+  padding: clamp(14px, 3vw, 26px);
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+.indicadores-pago {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(125px, 100%), 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.indicadores-pago strong,
+.movimiento small {
+  display: block;
+}
+.indicadores-pago strong {
+  font-size: 1.35rem;
+}
+.indicadores-pago small,
+.movimiento small,
+.resumen-pagos > small {
+  color: var(--muted);
+}
+.resumen-pagos h4 {
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.movimiento {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.medio {
+  background: #506857;
+  border-radius: 10px;
+  color: white;
+  display: grid;
+  place-items: center;
+  height: 42px;
+  font-size: 12px;
+  font-weight: bold;
+}
+.medio.yape {
+  background: #762685;
+}
+.medio.plin {
+  background: #007578;
+}
+.importes {
+  text-align: right;
+}
+.importes strong,
+.indicadores-pago > div:nth-child(2) strong {
+  color: #167347;
+}
+[data-tema="oscuro"] .importes strong,
+[data-tema="oscuro"] .indicadores-pago > div:nth-child(2) strong {
+  color: #85e4a8;
+}
+.resumen-pagos > small {
+  display: block;
+  margin-top: 0.8rem;
+}
+.entrada-dinero {
+  position: relative;
+}
+.entrada-dinero > button {
+  float: right;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.45rem;
+}
+.entrada-dinero input {
+  padding-left: 2.5rem;
+  width: 100%;
+  min-height: 44px;
+}
+.entrada-dinero > span {
+  position: absolute;
+  bottom: 11px;
+  left: 12px;
+  color: var(--muted);
+}
+.entrada-dinero .campo-ayuda {
+  display: block;
+}
+.entrada-dinero .etiqueta {
+  margin-bottom: 6px;
+}
+.previa-pago {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding-top: 15px;
+  border-top: 1px solid var(--line);
+}
+.previa-pago dd {
+  margin: 0;
+  text-align: right;
+}
+.previa-pago :nth-last-child(-n + 2) {
+  font-weight: bold;
+}
+@media (max-width: 520px) {
+  .movimiento {
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 8px;
+  }
+  .movimiento .importes {
+    grid-column: 2;
+    text-align: right;
+  }
+  .medio {
+    height: 36px;
+  }
+  .entrada-dinero > button {
+    float: none;
+    display: block;
+    margin-left: auto;
+  }
+}
+
+.transmision {
+  background: linear-gradient(155deg, #213f3b, #122329 58%, #192e38);
+  color: #f2f6ee;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.transmision .ceja,
+.transmision > p {
+  color: #d1e4db;
+}
+.transmision .foto-sorteo {
+  width: 84px;
+  height: 84px;
+  object-fit: cover;
+  border: 1px solid #97b7a5;
+}
+.maquina {
+  position: relative;
+  width: min(350px, 90%);
+  margin: 18px auto 24px;
+  isolation: isolate;
+}
+.cristal {
+  position: relative;
+  aspect-ratio: 1;
+  border: 5px solid #99b5bb;
+  border-radius: 50%;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 28% 17%, #e7ffff40, transparent 25%),
+    radial-gradient(circle at 52% 75%, #56757b55, #2c485060 60%, #b4d6d75c 95%);
+  box-shadow:
+    inset -12px -12px 24px #07151e88,
+    inset 3px 2px 7px #deffff99,
+    0 8px 22px #05131777;
+}
+.cristal:after {
+  content: "";
+  position: absolute;
+  inset: 5%;
+  border-radius: 50%;
+  border-top: 3px solid #e1fafa59;
+  transform: rotate(-27deg);
+  pointer-events: none;
+}
+.bola-color,
+.salida-oficial {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  border-radius: 50%;
+  width: 15%;
+  aspect-ratio: 1;
+  color: white;
+  font: 800 clamp(0.75rem, 2.4vw, 1.1rem)/1 system-ui;
+  background:
+    radial-gradient(ellipse at 30% 20%, #fff9, transparent 24%),
+    radial-gradient(
+      circle at 40% 34%,
+      var(--tono),
+      var(--tono) 38%,
+      #152332 130%
+    );
+  box-shadow:
+    inset -3px -4px 5px #0005,
+    inset 1px 1px 2px #fffa,
+    0 2px 4px #0006;
+  text-shadow: 0 1px 3px #0009;
+}
+.bola-color.extraida {
+  visibility: hidden;
+}
+.pedestal {
+  position: relative;
+  width: 54%;
+  height: 28px;
+  background: linear-gradient(100deg, #5b7480, #b2c2bf, #4f6774);
+  clip-path: polygon(20% 0, 80% 0, 100% 100%, 0 100%);
+  margin: -3px auto 0;
+}
+.maquina:after {
+  content: "";
+  display: block;
+  width: 64%;
+  height: 12px;
+  background: linear-gradient(#a1b3b3, #5d747e);
+  border-radius: 6px;
+  margin: auto;
+}
+.salida-oficial {
+  --tono: #469b81;
+  left: 39%;
+  top: 78%;
+  width: 22%;
+  z-index: 2;
+}
+.rondas {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rondas > div {
+  padding: 8px 16px;
+  background: #ffffff13;
+  border-radius: 10px;
+}
+.rondas b {
+  display: block;
+  font-size: 1.3rem;
+}
+.rondas .premiado {
+  background: #226347;
+}
+.celebracion {
+  border-radius: 16px;
+  background: radial-gradient(ellipse, #d6b04844, transparent 70%);
+  animation: celebrar 0.85s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .salida-oficial,
+  .celebracion,
+  .globo-ayuda {
+    animation: none;
+  }
+}
+
+.form-abono {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: clamp(14px, 3vw, 24px);
+  margin: 16px 0;
+  background: var(--panel);
+}
+.form-abono fieldset {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+.form-abono fieldset > * {
+  grid-column: 1/-1;
+}
+.form-abono button[type="reset"] {
+  grid-column: 1;
+  justify-self: end;
+}
+.form-abono .accion-form {
+  grid-column: 2;
+}
+.form-abono input,
+.form-abono select {
+  height: 44px;
+  border-radius: 8px;
+}
+.resumen-pagos .financiero {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+.indicadores-pago strong,
+.importes {
+  font-variant-numeric: tabular-nums;
+}
+
+.transmision .bola {
+  color: #fff4c9;
+  animation: none;
+}
+.transmision .bola.celebracion {
+  animation: celebrar 0.85s ease-out;
+}
+.movimiento {
+  box-shadow: none;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+}
+.resumen-pagos > p {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.saldo-abierto {
+  color: #a4540d;
+}
+[data-tema="oscuro"] .saldo-abierto {
+  color: #f2b45e;
+}
+@media (prefers-reduced-motion: reduce) {
+  .transmision .bola.celebracion {
+    animation: none;
+  }
+}

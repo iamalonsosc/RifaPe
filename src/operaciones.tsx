@@ -1,3 +1,5 @@
+import { ResumenPagos, FormularioAbono } from "./pagos";
+import { Ayuda } from "./ayuda";
 import { useEffect, useState } from "react";
 import { Campo, Formulario, Accion } from "./controles";
 import {
@@ -31,6 +33,8 @@ export function Operaciones({
     [pend, saldos] = useState<Fila[]>([]),
     [dev, devoluciones] = useState<Fila[]>([]),
     [pagos, cobros] = useState<Fila[]>([]);
+  const [boletos, emisiones] = useState<Fila[]>([]),
+    [lineas, cargarLineas] = useState<Fila[]>([]);
   const [comprador, seleccionar] = useState<Persona | null>(null);
   const [sel, elegir] = useState<string[]>([]),
     [filtro, filtrar] = useState("todos"),
@@ -49,8 +53,10 @@ export function Operaciones({
       filas<Fila>("vw_pagos_pendientes", f, "id_venta"),
       filas<Fila>("devolucion", undefined, "id_devolucion"),
       filas<Fila>("pago", undefined, "id_pago"),
+      filas<Fila>("vw_boletos_rifa", f, "id_boleto"),
+      filas<Fila>("vw_detalle_ventas", f, "id_detalle_venta"),
     ])
-      .then(([n, p, v, b, d, s, h, c]) => {
+      .then(([n, p, v, b, d, s, h, c, tickets, detallesVenta]) => {
         if (vivo) {
           poner(n);
           personas(p);
@@ -60,6 +66,8 @@ export function Operaciones({
           saldos(s);
           devoluciones(h);
           cobros(c);
+          emisiones(tickets);
+          cargarLineas(detallesVenta);
           error("");
         }
       })
@@ -200,7 +208,9 @@ export function Operaciones({
           )}
         </section>
       )}
-      <h2>Reservas activas</h2>
+      <h2>
+        Reservas activas <Ayuda tema="Reservar" />
+      </h2>
       {!rs.some((b) => b.estado === "activa") && <p>Sin reservas activas.</p>}
       {rs
         .filter((b) => b.estado === "activa")
@@ -218,7 +228,31 @@ export function Operaciones({
                   .join(", ")}{" "}
                 · Vence {fecha(String(b.fecha_vencimiento))}
               </p>
+              <p>
+                Reservado ·{" "}
+                <span className="financiero">Pendiente de pago</span> · Saldo{" "}
+                {soles(numeros.length * Number(b.precio_unitario))}
+              </p>
+              <p>
+                {boletos.some(
+                  (t) =>
+                    t.id_reserva === b.id_reserva && t.estado === "emitido",
+                )
+                  ? "Emitido"
+                  : "Pendiente de emisión"}{" "}
+                <Ayuda tema="Emitir" />
+              </p>
               <div className="acciones">
+                {!boletos.some((t) => t.id_reserva === b.id_reserva) && (
+                  <Accion
+                    texto="Emitir boleto"
+                    ejecutar={() =>
+                      ejecutar("emitir_boletos_reserva", {
+                        p_reserva: b.id_reserva,
+                      })
+                    }
+                  />
+                )}
                 <Accion
                   texto="Convertir en venta"
                   ejecutar={() =>
@@ -232,9 +266,13 @@ export function Operaciones({
                 />
                 <Accion
                   texto="Liberar"
-                  ejecutar={() =>
-                    ejecutar("liberar_reserva", { p_reserva: b.id_reserva })
-                  }
+                  ejecutar={async () => {
+                    if (!confirm("¿Liberar los números y anular sus boletos?"))
+                      throw Error("Reserva conservada.");
+                    await ejecutar("liberar_reserva", {
+                      p_reserva: b.id_reserva,
+                    });
+                  }}
                 />
               </div>
             </section>
@@ -243,7 +281,21 @@ export function Operaciones({
       <h2>Ventas y pagos</h2>
       {!vs.length && <p>Aún no hay ventas.</p>}
       {vs.map((v) => {
-        const movimientos = pagos.filter((p) => p.id_venta === v.id_venta);
+        const movimientos = pagos
+          .filter((p) => p.id_venta === v.id_venta)
+          .sort(
+            (a, b) =>
+              String(a.fecha_pago).localeCompare(String(b.fecha_pago)) ||
+              String(a.id_pago).localeCompare(String(b.id_pago)),
+          );
+
+        const numerosVenta = lineas
+          .filter((l) => l.id_venta === v.id_venta)
+          .map((l) => "N.º " + numero(Number(l.numero)));
+        const identidad = [numerosVenta.join(", "), nombreDe(v.id_persona)]
+          .filter(Boolean)
+          .join(" · ");
+        const emitidos = boletos.filter((t) => t.id_venta === v.id_venta);
         const cobrado =
           movimientos.reduce(
             (s, p) => s + Math.round(Number(p.importe) * 100),
@@ -252,7 +304,15 @@ export function Operaciones({
         const pendiente = pend.find((p) => p.id_venta === v.id_venta);
         const saldo = pendiente ? Number(pendiente.saldo) : null;
         return (
-          <details key={String(v.id_venta)}>
+          <details
+            key={String(v.id_venta)}
+            onToggle={(e) => {
+              if (!e.currentTarget.open)
+                e.currentTarget
+                  .querySelector<HTMLButtonElement>('button[type="reset"]')
+                  ?.click();
+            }}
+          >
             <summary>
               {nombreDe(v.id_persona)} ·{" "}
               {v.estado === "pendiente" && saldo !== null
@@ -262,60 +322,59 @@ export function Operaciones({
                 : v.estado + " · " + soles(Number(v.total))}
             </summary>
             <p>{fecha(String(v.fecha_venta))}</p>
+            <ResumenPagos
+              total={Number(v.total)}
+              cobrado={cobrado}
+              cancelada={v.estado === "cancelada"}
+              identidad={identidad}
+              cantidad={numerosVenta.length}
+              movimientos={movimientos}
+            />
             <p>
-              Total de la venta: {soles(Number(v.total))} · Cobrado:{" "}
-              {soles(cobrado)}
-              {v.estado !== "cancelada" && saldo !== null && (
-                <> · Por cobrar: {soles(saldo)}</>
-              )}
+              {v.estado === "cancelada"
+                ? "Asignación cancelada"
+                : "Número asignado"}{" "}
+              ·{" "}
+              {emitidos.length
+                ? emitidos[0].estado === "anulado"
+                  ? "Boleto anulado"
+                  : "Boleto emitido"
+                : "Pendiente de emisión"}{" "}
+              <Ayuda tema="Emitir" />
             </p>
-            {movimientos.map((p) => (
-              <p key={String(p.id_pago)}>
-                Pago manual · {p.medio_pago} · {soles(Number(p.importe))}
-              </p>
-            ))}
+
+            {!emitidos.length && v.estado !== "cancelada" && (
+              <Accion
+                texto="Emitir boleto"
+                ejecutar={() =>
+                  ejecutar("emitir_boletos", { p_venta: v.id_venta })
+                }
+              />
+            )}
+
             {abiertos &&
               v.estado === "pendiente" &&
               saldo !== null &&
               saldo > 0 && (
-                <Formulario
-                  accion="Registrar pago o abono"
-                  guardar={(f) =>
+                <FormularioAbono
+                  identidad={identidad}
+                  total={Number(v.total)}
+                  key={saldo}
+                  saldo={saldo}
+                  guardar={(importe, medio, ref) =>
                     ejecutar("confirmar_pago", {
                       p_venta: v.id_venta,
-                      p_importe: Number(f.get("importe")),
-                      p_medio: campo(f, "medio"),
-                      p_referencia: campo(f, "ref") || null,
+                      p_importe: importe,
+                      p_medio: medio,
+                      p_referencia: ref || null,
                     })
                   }
-                >
-                  <Campo titulo="Importe recibido (S/)">
-                    <input
-                      name="importe"
-                      type="number"
-                      min=".01"
-                      step=".01"
-                      key={saldo}
-                      max={saldo}
-                      defaultValue={saldo}
-                      required
-                    />
-                  </Campo>
-                  <Campo titulo="Medio">
-                    <select name="medio">
-                      {["yape", "plin", "efectivo", "otro"].map((s) => (
-                        <option key={s}>{s}</option>
-                      ))}
-                    </select>
-                  </Campo>
-                  <Campo titulo="Referencia">
-                    <input name="ref" />
-                  </Campo>
-                </Formulario>
+                />
               )}
             {abiertos && v.estado !== "cancelada" && (
               <Formulario
                 accion="Cancelar venta"
+                ayuda="Cancelar"
                 guardar={async (f) => {
                   if (!confirm("¿Anular boletos y liberar estos números?"))
                     throw Error("Venta conservada.");

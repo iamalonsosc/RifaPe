@@ -1,6 +1,6 @@
 -- Solo para un proyecto de desarrollo vacío con la administradora autorizada.
 begin;
-select set_config('request.jwt.claim.sub',(select id_perfil::text from public.perfil),true);
+select set_config('request.jwt.claim.sub',(select id_perfil::text from public.perfil where plaza=1),true);
 set local role authenticated;
 select public.guardar_persona('Alonso');
 do $$ declare r uuid;

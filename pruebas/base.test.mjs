@@ -8,7 +8,7 @@ import EmbeddedPostgres from "embedded-postgres";
 
 test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
   const pg = new EmbeddedPostgres({
-    databaseDir: await mkdtemp(join(tmpdir(), "rifafacil-")),
+    databaseDir: await mkdtemp(join(tmpdir(), "rifapes-")),
     port: randomInt(20000, 45000),
     password: randomUUID(),
     persistent: false,
@@ -26,12 +26,18 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
     const uno = async (sql, args = []) =>
       Object.values((await q(sql, args))[0])[0];
     await q(await readFile("pruebas/servicios-locales.sql", "utf8"));
-    for (const file of (await readdir("supabase/migrations")).sort())
-      await q(await readFile(join("supabase/migrations", file), "utf8"));
     const admin = randomUUID();
-    await q(
-      "insert into auth.users values($1,'admin@example.invalid','{\"rol_rifafacil\":\"administradora\"}')",
-      [admin],
+    for (const file of (await readdir("supabase/migrations")).sort()) {
+      if (file === "20261123001100_dos_administradoras.sql")
+        await q(
+          "insert into auth.users values($1,'admin@example.invalid','{\"rol_rifafacil\":\"administradora\"}')",
+          [admin],
+        );
+      await q(await readFile(join("supabase/migrations", file), "utf8"));
+    }
+    assert.equal(
+      await uno("select plaza from perfil where id_perfil=$1", [admin]),
+      1,
     );
     for (const c of [db, otra]) {
       await c.query("set role authenticated");
@@ -79,6 +85,7 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
         );
         await assert.rejects(pago(v, 11));
         assert.equal(await uno("select count(*) from boleto"), "0");
+        await q("select emitir_boletos($1)", [v]);
         await pago(v, 10);
         await q("select emitir_boletos($1)", [v]);
         assert.equal(await uno("select count(*) from boleto"), "2");
@@ -111,7 +118,22 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
         args,
       );
       await assert.rejects(vender(args[2]));
-      await q("select registrar_venta($1,$2,$3,$4)", [...args, res]);
+      await q("select emitir_boletos_reserva($1)", [res]);
+      const token = await uno(
+        "select token_publico from vw_boletos_rifa where id_reserva=$1",
+        [res],
+      );
+      const venta = await uno("select registrar_venta($1,$2,$3,$4)", [
+        ...args,
+        res,
+      ]);
+      await q("select emitir_boletos($1)", [venta]);
+      assert.deepEqual(
+        await q("select token_publico from vw_boletos_rifa where id_venta=$1", [
+          venta,
+        ]),
+        [{ token_publico: token }],
+      );
     });
     await t.test(
       "25 premios, descartes, reconexión tras 16 y reintento",
@@ -198,6 +220,125 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
           );
       }
     });
+    await t.test(
+      "Reserva de 50, emisión, abonos de 10 y 20 y cancelación del saldo",
+      async () => {
+        const rifa = await uno(
+          "select guardar_rifa('Abonos',50,2,now(),'numero')",
+        );
+        const n = await uno(
+          "select id_numero_rifa from numero_rifa where id_rifa=$1 limit 1",
+          [rifa],
+        );
+        const reserva = await uno(
+          "select reservar_numeros($1,$2,$3,now()+interval '1 hour')",
+          [rifa, persona, [n]],
+        );
+        await q("select emitir_boletos_reserva($1)", [reserva]);
+        const token = await uno(
+          "select token_publico from vw_boletos_rifa where id_reserva=$1",
+          [reserva],
+        );
+        await q("reset role");
+        assert.equal(
+          (await uno("select consultar_boleto($1)", [token])).estado,
+          "emitido",
+        );
+        await q("set role authenticated");
+        await q(
+          "select guardar_rifa('Abonos',60,2,now(),'numero',null,null,$1)",
+          [rifa],
+        );
+        const v = await uno("select registrar_venta($1,$2,$3,$4)", [
+          rifa,
+          persona,
+          [n],
+          reserva,
+        ]);
+        await assert.rejects(pago(v, 0));
+        await assert.rejects(pago(v, -1));
+        for (const [importe, saldo] of [
+          [10, 40],
+          [20, 20],
+          [20, 0],
+        ]) {
+          await pago(v, importe);
+          assert.equal(
+            Number(
+              await uno(
+                "select v.total-sum(p.importe) from venta v join pago p using(id_venta) where id_venta=$1 group by v.total",
+                [v],
+              ),
+            ),
+            saldo,
+          );
+          await q("select emitir_boletos($1)", [v]);
+          assert.deepEqual(
+            await q(
+              "select token_publico from vw_boletos_rifa where id_venta=$1",
+              [v],
+            ),
+            [{ token_publico: token }],
+          );
+          if (saldo) await assert.rejects(pago(v, saldo + 1));
+        }
+        assert.equal(
+          await uno(
+            "select count(*) from pago where id_venta=$1 and id_perfil_registro=$2",
+            [v, admin],
+          ),
+          "3",
+        );
+      },
+    );
+    await t.test(
+      "Mil números habilitados y tres puestos oficiales",
+      async () => {
+        const id = await uno(
+          "select guardar_rifa('Puestos',1,1000,now(),'numero')",
+        );
+        await q(
+          "select confirmar_pago(registrar_venta($1, guardar_persona('Participante '||numero),array[id_numero_rifa]),1,'efectivo') from numero_rifa where id_rifa=$1",
+          [id],
+        );
+        await q("select agregar_puestos($1,'Libro','Radio','Bicicleta')", [id]);
+        await q("select iniciar_sorteo($1)", [id]);
+        const premios = await q(
+          "select * from premio_rifa where id_rifa=$1 order by orden_sorteo",
+          [id],
+        );
+        assert.deepEqual(
+          premios.map((p) => p.nombre),
+          [
+            "Tercer puesto · Libro",
+            "Segundo puesto · Radio",
+            "Primer puesto · Bicicleta",
+          ],
+        );
+        for (const [i, p] of premios.entries()) {
+          const resumen = await uno("select resumen_candidatos($1,$2)", [
+            id,
+            p.id_premio_rifa,
+          ]);
+          assert.equal(resumen.numeros, 1000 - i);
+          assert.equal(resumen.participantes, 1000 - i);
+          assert.equal(resumen.muestra.length, 12);
+          const args = [id, p.id_premio_rifa, 1, randomUUID()];
+          assert.equal(
+            (
+              await q("select * from extraer_numero_sorteo($1,$2,$3,$4)", args)
+            )[0].es_ganadora,
+            true,
+          );
+          await assert.rejects(
+            q("select * from extraer_numero_sorteo($1,$2,$3,$4)", [
+              ...args.slice(0, 3),
+              randomUUID(),
+            ]),
+          );
+        }
+      },
+    );
     await t.test("Precios históricos y edición bloqueada", async () => {
       const id = await crear("numero");
       const n = await uno(
@@ -242,12 +383,26 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
         "select reservar_numeros($1,$2,$3,now()+interval '1 hour')",
         [id, persona, [n]],
       );
+      await q("select emitir_boletos_reserva($1)", [res]);
       await q("reset role");
       await q(
         "update reserva set fecha_vencimiento=now()-interval '1 second' where id_reserva=$1",
         [res],
       );
+      assert.equal(
+        await uno("select estado from vw_boletos_rifa where id_reserva=$1", [
+          res,
+        ]),
+        "anulado",
+      );
       await q("select vencer_reservas()");
+      assert.equal(
+        await uno(
+          "select b.estado from boleto b join detalle_reserva using(id_detalle_reserva) where id_reserva=$1",
+          [res],
+        ),
+        "anulado",
+      );
       assert.equal(
         await uno("select estado from numero_rifa where id_numero_rifa=$1", [
           n,
@@ -261,7 +416,7 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
       await q("set role authenticated");
     });
     await t.test(
-      "Boleto vigente, cinco prioridades, intercambio y conservación de identidad",
+      "Boleto vigente, prioridades sin tope, intercambio y conservación de identidad",
       async () => {
         const rifa = await crear("numero");
         const numero = await uno(
@@ -284,10 +439,8 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
           "select * from vw_premios_rifa where id_rifa=$1 order by orden_sorteo",
           [rifa],
         );
-        await assert.rejects(
-          guardar(6, 1, ids[5].id_premio_rifa),
-          /cinco premios/,
-        );
+        await assert.rejects(guardar(6, 1, ids[5].id_premio_rifa), /ocupada/);
+        await guardar(6, 6, ids[5].id_premio_rifa);
         await guardar(2, 1, ids[1].id_premio_rifa);
         await q(
           "select guardar_rifa('Actualizada',10,50,'2030-02-10T15:00Z','numero',null,'https://example.invalid/foto.png',$1)",
@@ -308,6 +461,7 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
           "Premio 3",
           "Premio 4",
           "Premio 5",
+          "Premio 6",
         ]);
         assert.equal(b.mas_premios, true);
         assert.equal(b.fotos_destacadas[0], null);
@@ -330,6 +484,68 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
         await q("set role authenticated");
         await q("select eliminar_premio($1,$2)", [rifa, ids[4].id_premio_rifa]);
         await guardar(6, 5, ids[5].id_premio_rifa);
+      },
+    );
+    await t.test(
+      "Dos administradoras aisladas en el mismo proyecto",
+      async () => {
+        const segunda = randomUUID();
+        await q("reset role");
+        await q(
+          "insert into auth.users values($1,'segunda@example.invalid','{}')",
+          [segunda],
+        );
+        await q(
+          'update auth.users set raw_app_meta_data=\'{"rol_rifapes":"administradora"}\' where id=$1',
+          [segunda],
+        );
+        await q(
+          "update auth.users set raw_app_meta_data=raw_app_meta_data where id=$1",
+          [segunda],
+        );
+        await assert.rejects(
+          q(
+            "insert into auth.users values($1,'tercera@example.invalid','{\"rol_rifapes\":\"administradora\"}')",
+            [randomUUID()],
+          ),
+          /dos administradoras/,
+        );
+        await q("set role authenticated");
+        await q("select set_config('request.jwt.claim.sub',$1,false)", [
+          segunda,
+        ]);
+        for (const tabla of [
+          "rifa",
+          "persona",
+          "venta",
+          "boleto",
+          "pago",
+          "auditoria",
+          "vw_resumen_rifa",
+        ])
+          assert.equal(await uno("select count(*) from " + tabla), "0");
+        const propia = await crear("numero");
+        await assert.rejects(
+          q("select guardar_premio($1,'Ajeno',1,1,false)", [r]),
+        );
+        await assert.rejects(q("select eliminar_persona($1)", [persona]));
+        assert.equal(
+          await uno("select id_registro from auditoria where entidad='rifa'"),
+          propia,
+        );
+        await q("select set_config('request.jwt.claim.sub',$1,false)", [admin]);
+        assert.equal(
+          await uno("select count(*) from vw_resumen_rifa where id_rifa=$1", [
+            propia,
+          ]),
+          "0",
+        );
+        assert.equal(
+          await uno("select count(*) from auditoria where id_registro=$1", [
+            propia,
+          ]),
+          "0",
+        );
       },
     );
     await t.test("RLS y privilegios", async () => {

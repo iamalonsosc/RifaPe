@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+test.use({ hasTouch: true });
 const usuario = "a16acdee-e0be-4550-9189-94d4563b4bb4";
 const rifaid = "10000000-e0be-4550-9189-94d4563b4bb4";
 test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) => {
@@ -49,7 +50,12 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
     const numeros = [7, 9, 25, 30];
     if (ruta.endsWith("/vw_premios_rifa")) data = premio ? [premio] : [];
     if (ruta.endsWith("/iniciar_sorteo")) iniciado = true;
-    if (ruta.endsWith("/extraer_numero_sorteo")) sorteado = true;
+    if (ruta.endsWith("/resumen_candidatos"))
+      data = { numeros: 4, participantes: 2, muestra: numeros };
+    if (ruta.endsWith("/extraer_numero_sorteo")) {
+      sorteado = true;
+      data = { es_ganadora: true, id_numero_rifa: "7" };
+    }
     if (iniciado && ruta.endsWith("/sorteo")) data = [{ id_sorteo: "oficial" }];
     if (iniciado && ruta.endsWith("/vw_premios_rifa"))
       data = [
@@ -123,12 +129,17 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
     }
     if (ruta.endsWith("/vw_detalle_ventas"))
       data = numeros.map((n) => ({
+        id_venta: n === 7 ? "parcial" : "otra-venta",
+        numero: n,
+        fecha_venta: "2026-12-01T12:00:00Z",
+        total: 20,
         id_detalle_venta: String(n),
         id_persona: n === 25 ? "otra" : "alonso",
       }));
-    if (ruta.endsWith("/boleto"))
+    if (ruta.endsWith("/vw_boletos_rifa"))
       data = numeros.map((n) => ({
         id_detalle_venta: String(n),
+        id_persona: n === 25 ? "otra" : "alonso",
         token_publico: "prueba-" + n,
         estado: n === 30 ? "anulado" : "emitido",
         datos_emision_historicos: {
@@ -159,6 +170,23 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
         fecha_sorteo: "2026-12-24T15:00:00Z",
         cantidad_numeros: 60,
       }));
+    if (ruta.endsWith("/rifa") && !creada)
+      data = [
+        ...(data as object[]),
+        ...[
+          ["Posterior", 5],
+          ["Vencida", -2],
+          ["Próxima", 1],
+        ].map(([nombre, d]) => ({
+          id_rifa: nombre,
+          nombre,
+          estado: "activa",
+          fecha_sorteo: new Date(
+            Date.now() + Number(d) * 86400000,
+          ).toISOString(),
+          cantidad_numeros: 20,
+        })),
+      ];
     if (ruta.endsWith("/vw_resumen_rifa") && !creada)
       data = [
         {
@@ -192,6 +220,7 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
         id_venta: "parcial",
         importe: 10,
         medio_pago: "yape",
+        fecha_pago: "2026-12-01T12:00:00Z",
       }));
     if (ruta.endsWith("/vw_pagos_pendientes") && abonado < 20)
       data = [{ id_venta: "parcial", saldo: 20 - abonado }];
@@ -223,6 +252,8 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   await expect(
     page.getByRole("heading", { name: "Resumen general" }),
   ).toBeVisible();
+  await expect(page.locator(".tarjeta h3").first()).toHaveText("Próxima");
+  await expect(page.locator(".tarjeta").nth(2)).toContainText("Fecha vencida");
   await page.getByRole("button", { name: "Cambiar tema" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-tema", "oscuro");
   await expect(page.locator(".metricas")).toContainText("290.00");
@@ -234,7 +265,7 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   await page.getByRole("button", { name: "Nueva rifa" }).click();
   await page.getByLabel("Nombre", { exact: true }).fill("Rifa de prueba");
   await page.getByLabel("Precio por número").fill("5");
-  await page.getByLabel("Fecha y hora en Perú").fill("2026-12-24T10:00");
+  await page.getByLabel("Fecha y hora de la rifa").fill("2026-12-24T10:00");
   await page.getByRole("button", { name: "Guardar" }).click();
   await expect(
     page.getByRole("heading", { name: "Rifa de prueba" }),
@@ -242,6 +273,25 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   const alta = page
     .locator("section")
     .filter({ has: page.getByRole("heading", { name: "Agregar premio" }) });
+  const ayuda = alta.getByRole("button", {
+    name: "Ayuda sobre Número ganador",
+  });
+  await ayuda.tap();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await ayuda.tap();
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await ayuda.focus();
+  await ayuda.press("Enter");
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await page
+    .getByRole("tooltip")
+    .screenshot({ path: test.info().outputPath("ayuda.png") });
+  await ayuda.press("Escape");
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await ayuda.hover();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
   await alta.getByLabel("Nombre del premio").fill("Ventilador");
   await alta.getByRole("switch", { name: "Sorpresa" }).check();
   await alta.getByRole("switch", { name: "Destacar en boleto" }).check();
@@ -264,16 +314,52 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
     .locator("details")
     .filter({ has: page.locator("summary", { hasText: "Sin pagos" }) });
   await ventaParcial.locator("summary").click();
-  await page.getByLabel("Importe recibido").fill("10");
-  await page.getByRole("button", { name: "Registrar pago o abono" }).click();
+  const importe = page.getByLabel("Importe del abono", { exact: true });
+  const registrar = page.getByRole("button", {
+    name: "Registrar abono",
+    exact: true,
+  });
+  await expect(importe).toHaveValue("0.00");
+  await expect(registrar).toBeDisabled();
+  for (const v of ["-1", "21", "1.234"]) {
+    await importe.fill(v);
+    await expect(registrar).toBeDisabled();
+  }
+  await importe.fill("10");
+  await expect(page.locator(".previa-pago dd").last()).toContainText("10.00");
+  for (const [width, height] of [
+    [1920, 1080],
+    [1366, 768],
+    [768, 1024],
+    [390, 844],
+  ]) {
+    await page.setViewportSize({ width, height });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page
+      .locator(".form-abono")
+      .screenshot({ path: test.info().outputPath("abono-" + width + ".png") });
+  }
+  await page.getByRole("button", { name: "Registrar abono" }).click();
   await expect(
     page.locator("summary").filter({ hasText: "Pago parcial" }),
   ).toContainText("10.00");
-  await expect(page.getByLabel("Importe recibido")).toHaveAttribute(
+  await expect(page.getByLabel("Importe del abono")).toHaveAttribute(
     "max",
     "10",
   );
-  await page.getByRole("button", { name: "Registrar pago o abono" }).click();
+  await expect(importe).toHaveValue("0.00");
+  await page.getByRole("button", { name: "Pagar saldo completo" }).click();
+  await page.getByRole("button", { name: "Registrar abono" }).click();
+  await expect(page.locator(".movimiento").first()).toContainText(
+    "Pago de saldo pendiente",
+  );
+  await page
+    .locator(".resumen-pagos")
+    .screenshot({ path: test.info().outputPath("historial.png") });
   await expect(
     page.locator("summary").filter({ hasText: "pagada" }),
   ).toContainText("20.00");
@@ -318,6 +404,13 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   await expect.poll(() => usuarioTikTok).toBe("iamalonsosc");
   await page.getByText("Lugar y transmisión", { exact: true }).click();
   await page.getByLabel("Seleccionar boleto").selectOption("prueba-7");
+  await page.getByText("Compartir por WhatsApp", { exact: true }).click();
+  await expect(page.getByLabel("Teléfono para este envío")).toHaveValue(
+    "991111111",
+  );
+  await expect(
+    page.getByRole("link", { name: "Abrir WhatsApp" }),
+  ).toHaveAttribute("href", /^https:\/\/wa\.me\/51991111111\?text=/);
   await expect(page.getByRole("checkbox", { name: "025" })).toHaveCount(0);
   await expect(page.getByRole("checkbox", { name: "030" })).toHaveCount(0);
   await page.getByRole("checkbox", { name: "009" }).check();
@@ -366,16 +459,42 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   page.once("dialog", (d) => d.accept());
   await page.getByRole("button", { name: "Iniciar sorteo oficial" }).click();
   const pantalla = page.locator(".transmision");
-  await pantalla.getByRole("button", { name: "Realizar sorteo" }).click();
-  await expect(pantalla.getByText("007 · Alonso")).toBeVisible();
+  await expect(pantalla.getByAltText("Premio sorpresa")).toBeVisible();
+  await pantalla
+    .locator(".maquina")
+    .screenshot({ path: test.info().outputPath("tombola.png") });
+  await pantalla.getByRole("button", { name: "Sortear", exact: true }).click();
+  await expect(pantalla.getByText("Mezclando los números…")).toBeVisible();
+  await expect(
+    pantalla.getByRole("button", { name: "Procesando…" }),
+  ).toBeDisabled();
+  await pantalla
+    .locator(".maquina")
+    .screenshot({ path: test.info().outputPath("mezcla.png") });
+  await expect(pantalla.locator(".salida-oficial")).toHaveText("007");
+  await page.reload();
+  await page
+    .locator("button.tarjeta")
+    .filter({ hasText: "Rifa de prueba" })
+    .click();
+  await page.getByRole("button", { name: "Sorteo", exact: true }).click();
+  await expect(
+    pantalla.getByRole("button", { name: "Sortear", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    pantalla.locator(".bola").filter({ hasText: "007 · Alonso" }),
+  ).toBeVisible();
   await expect(
     pantalla.getByRole("heading", { name: "Ventilador" }),
   ).toBeVisible();
+  await pantalla.screenshot({ path: test.info().outputPath("ganador.png") });
   await pantalla.getByRole("button", { name: "Siguiente premio" }).click();
   await expect(
     pantalla.getByRole("heading", { name: "Cafetera" }),
   ).toBeVisible();
-  await expect(pantalla.getByText("007 · Alonso")).toHaveCount(0);
+  await expect(
+    pantalla.locator(".bola").filter({ hasText: "007 · Alonso" }),
+  ).toHaveCount(0);
   await page
     .getByRole("button", { name: "Participantes", exact: true })
     .click();
@@ -450,4 +569,98 @@ test("Boleto público, QR, destino y descargas PNG/PDF", async ({ page }) => {
       "Boleto-007." + tipo.toLowerCase(),
     );
   }
+});
+
+test("Premios por espacio y WhatsApp individual con imagen y mensaje", async ({
+  page,
+}) => {
+  let cantidad = 1;
+  await page.route("**/functions/v1/consultar-boleto", (route) =>
+    route.fulfill({
+      json: {
+        codigo: "681ca001-34b7-4256-a390-3cfff5575111",
+        rifa: "Rifa de verano",
+        numero: 7,
+        participante: "Alonso",
+        estado: "emitido",
+        fecha: "2026-12-20T15:00:00Z",
+        destacados: Array.from(
+          { length: cantidad },
+          (_, i) => i + " " + "nombre largo ".repeat(12),
+        ),
+        plantilla: {
+          titulo: "Boleto",
+          tema: "verano",
+          mostrar_qr: true,
+          mostrar_premio: true,
+          mostrar_lugar: false,
+        },
+      },
+    }),
+  );
+  for (cantidad of [1, 5, 7, 25]) {
+    await page.goto("/boleto/681ca001-34b7-4256-a390-3cfff5575111");
+    await expect(page.locator(".qr-boleto")).toBeVisible();
+    const visibles = page.locator(".premios-boleto li:visible");
+    if (cantidad < 25) {
+      await expect(visibles).toHaveCount(cantidad);
+      await expect(page.locator(".aviso-premios")).toBeHidden();
+    } else {
+      await expect(page.locator(".aviso-premios")).toBeVisible();
+      expect(await visibles.count()).toBeLessThan(25);
+    }
+    const lista = page.locator(".premios-boleto");
+    expect(await lista.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+      true,
+    );
+  }
+  await page.getByText("Compartir por WhatsApp").click();
+  await page.getByLabel("Mensaje personalizado").fill("Gracias Alonso");
+
+  const archivo = page.getByRole("link", { name: "Descargar imagen" });
+  await expect(archivo).toHaveAttribute("href", /^data:image\/png/);
+  for (const numero of ["987654321", "51987654321", "+51 987-654-321"]) {
+    await page.getByLabel("Teléfono para este envío").fill(numero);
+    await expect(
+      page.getByRole("link", { name: "Abrir WhatsApp" }),
+    ).toHaveAttribute("href", /^https:\/\/wa\.me\/51987654321\?text=/);
+  }
+  const mensaje = new URL(
+    (await page
+      .getByRole("link", { name: "Abrir WhatsApp" })
+      .getAttribute("href"))!,
+  ).searchParams.get("text")!;
+  for (const contenido of [
+    "Gracias Alonso",
+    "Rifa de verano",
+    "Alonso",
+    "007",
+    page.url(),
+  ])
+    expect(mensaje).toContain(contenido);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "canShare", {
+      configurable: true,
+      value: () => true,
+    });
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async (data: ShareData) => {
+        document.body.dataset.archivo = data.files?.[0]?.type;
+        document.body.dataset.mensaje = data.text;
+      },
+    });
+  });
+  await page.getByLabel("Mensaje personalizado").fill("Tu boleto de verano");
+  await page
+    .getByRole("button", { name: "Compartir imagen y mensaje" })
+    .click();
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-archivo",
+    "image/png",
+  );
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-mensaje",
+    /Tu boleto de verano/,
+  );
 });

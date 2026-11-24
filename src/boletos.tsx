@@ -25,8 +25,7 @@ import {
 function informacionRifa(r: Rifa, premios: Premio[]) {
   const lista = premios
     .filter((p) => p.prioridad != null)
-    .sort((a, b) => a.prioridad! - b.prioridad!)
-    .slice(0, 5);
+    .sort((a, b) => a.prioridad! - b.prioridad!);
   return {
     rifa: r.nombre,
     fecha: r.fecha_sorteo,
@@ -34,7 +33,9 @@ function informacionRifa(r: Rifa, premios: Premio[]) {
     destacados: lista.map((p) =>
       p.es_sorpresa ? "Premio sorpresa" : p.nombre,
     ),
-    fotos_destacadas: lista.map((p) => (p.es_sorpresa ? null : p.imagen_url)),
+    fotos_destacadas: lista.map((p) =>
+      p.es_sorpresa ? "/regalo-sorpresa.svg" : p.imagen_url,
+    ),
     mas_premios: premios.length > lista.length,
   };
 }
@@ -105,6 +106,76 @@ function VistaEscalada({
     </div>
   );
 }
+function PremiosBoleto({ b }: { b: Ticket }) {
+  const caja = useRef<HTMLDivElement>(null);
+  const [cantidad, limitar] = useState(0);
+  useLayoutEffect(() => {
+    const root = caja.current!;
+    const lista = root.querySelector("ol")!;
+    const aviso = root.querySelector<HTMLElement>(".aviso-premios")!;
+    function medir() {
+      const filas = Array.from(lista.children) as HTMLElement[];
+      const margen = parseFloat(getComputedStyle(lista).rowGap) || 0;
+      const libre = root.clientHeight - lista.offsetTop;
+      const alturas = filas.map((f) => f.offsetHeight);
+      const total = alturas.reduce((s, h, i) => s + h + (i ? margen : 0), 0);
+      const limite =
+        libre -
+        (b.mas_premios || total > libre ? aviso.offsetHeight + margen : 0);
+      let usados = 0,
+        visibles = 0;
+      for (const alto of alturas) {
+        usados += alto + (visibles ? margen : 0);
+        if (usados > limite) break;
+        visibles++;
+      }
+      limitar(visibles);
+    }
+    medir();
+    const obs = new ResizeObserver(medir);
+    obs.observe(root);
+    obs.observe(lista);
+    obs.observe(aviso);
+    return () => obs.disconnect();
+  }, [b]);
+  const premios = b.destacados ?? [];
+  return (
+    <div ref={caja} className="premios-boleto">
+      {!!premios.length && <small>Premios destacados</small>}
+      <ol>
+        {premios.map((nombre, i) => (
+          <li
+            key={i}
+            style={{ visibility: i < cantidad ? "visible" : "hidden" }}
+          >
+            {b.plantilla.mostrar_fotos_premios !== false &&
+              (b.fotos_destacadas?.[i] || nombre === "Premio sorpresa") &&
+              (i < cantidad ? (
+                <img
+                  className="producto-boleto"
+                  crossOrigin="anonymous"
+                  src={b.fotos_destacadas?.[i] || "/regalo-sorpresa.svg"}
+                  alt={nombre}
+                />
+              ) : (
+                <i className="producto-boleto" />
+              ))}
+            <span>{nombre}</span>
+          </li>
+        ))}
+      </ol>
+      <small
+        className="aviso-premios"
+        style={{
+          visibility:
+            b.mas_premios || cantidad < premios.length ? "visible" : "hidden",
+        }}
+      >
+        ¡Y MÁS PREMIOS!
+      </small>
+    </div>
+  );
+}
 function Tarjeta({ b, muestra = false }: { b: Ticket; muestra?: boolean }) {
   const ref = useRef<HTMLDivElement>(null),
     [qr, setQr] = useState("");
@@ -119,7 +190,7 @@ function Tarjeta({ b, muestra = false }: { b: Ticket; muestra?: boolean }) {
       vivo = false;
     };
   }, [url]);
-  async function exportar(pdf: boolean) {
+  async function generarPNG() {
     await document.fonts.ready;
     if (!ref.current || (b.plantilla.mostrar_qr && !qr))
       throw Error("Espera a que cargue el boleto.");
@@ -127,7 +198,11 @@ function Tarjeta({ b, muestra = false }: { b: Ticket; muestra?: boolean }) {
       Array.from(ref.current.querySelectorAll("img"), (i) => i.decode()),
     );
     const { toPng } = await import("html-to-image");
-    const data = await toPng(ref.current, { pixelRatio: 2 });
+    return toPng(ref.current, { pixelRatio: 2 });
+  }
+  async function exportar(pdf: boolean) {
+    const data = await generarPNG();
+    if (!ref.current) return;
     const archivo = "Boleto-" + numero(b.numero);
     if (pdf) {
       const { jsPDF } = await import("jspdf");
@@ -173,7 +248,7 @@ function Tarjeta({ b, muestra = false }: { b: Ticket; muestra?: boolean }) {
           <div className="cuerpo-boleto">
             <div className="cabecera-boleto">
               <div>
-                <small>RifaFácil</small>
+                <small>RifaPes</small>
                 <h3>{b.plantilla.titulo}</h3>
                 <h2>{b.rifa}</h2>
                 <p>{fechaBoleto.format(new Date(b.fecha))} · Perú</p>
@@ -197,32 +272,7 @@ function Tarjeta({ b, muestra = false }: { b: Ticket; muestra?: boolean }) {
             <small className="codigo-boleto">{b.codigo}</small>
           </div>
           <div className="talon-boleto">
-            {b.plantilla.mostrar_premio && (
-              <div className="premios-boleto">
-                {!!b.destacados?.length && (
-                  <>
-                    <small>Premios destacados</small>
-                    <ol>
-                      {b.destacados.slice(0, 5).map((n, i) => (
-                        <li key={i}>
-                          {b.plantilla.mostrar_fotos_premios !== false &&
-                            b.fotos_destacadas?.[i] && (
-                              <img
-                                className="producto-boleto"
-                                crossOrigin="anonymous"
-                                src={b.fotos_destacadas[i]!}
-                                alt={n}
-                              />
-                            )}
-                          <span>{n}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </>
-                )}
-                {b.mas_premios && <small>Y MÁS PREMIOS</small>}
-              </div>
-            )}
+            {b.plantilla.mostrar_premio && <PremiosBoleto b={b} />}
             <div className="pie-transmision">
               {b.plantilla.mostrar_qr && qr && (
                 <img
@@ -245,21 +295,12 @@ function Tarjeta({ b, muestra = false }: { b: Ticket; muestra?: boolean }) {
         <div className="acciones">
           <Accion texto="Descargar PNG" ejecutar={() => exportar(false)} />
           <Accion texto="Descargar PDF" ejecutar={() => exportar(true)} />
-          {!!navigator.share && (
-            <Accion
-              texto="Compartir"
-              ejecutar={() => navigator.share({ title: b.rifa, url })}
-            />
-          )}
-          <a
-            href={
-              "https://wa.me/?text=" + encodeURIComponent(b.rifa + " " + url)
-            }
-            target="_blank"
-            rel="noreferrer"
-          >
-            WhatsApp
-          </a>
+          <CompartirIndividual
+            key={JSON.stringify(b)}
+            b={b}
+            url={url}
+            generar={generarPNG}
+          />
           {b.destino?.startsWith("https://") && (
             <a href={b.destino} target="_blank" rel="noreferrer">
               Ver sorteo
@@ -268,6 +309,139 @@ function Tarjeta({ b, muestra = false }: { b: Ticket; muestra?: boolean }) {
         </div>
       )}
     </section>
+  );
+}
+function CompartirIndividual({
+  b,
+  url,
+  generar,
+}: {
+  b: Ticket;
+  url: string;
+  generar: () => Promise<string>;
+}) {
+  const [mensaje, editar] = useState("🎟️ ¡Gracias por participar!"),
+    [foto, preparar] = useState<File>(),
+    [imagen, descargar] = useState(""),
+    [ocupado, cargar] = useState(false),
+    [aviso, informar] = useState("");
+  const [telefono, corregir] = useState(b.telefono ?? "");
+  const limpio = telefono.trim().replace(/[\s()-]/g, "");
+  const movil = /^(?:\+?51)?(9\d{8})$/.exec(limpio);
+  const destino = movil
+    ? "51" + movil[1]
+    : /^\+(?!51)[1-9]\d{7,14}$/.test(limpio)
+      ? limpio.slice(1)
+      : "";
+  const texto = [
+    mensaje,
+    "Hola, " + b.participante + ". Tu boleto ha sido emitido.",
+    "Rifa: " + b.rifa,
+    "Participante: " + b.participante,
+    "Número de boleto: " + numero(b.numero),
+    "Fecha del sorteo: " + fechaBoleto.format(new Date(b.fecha)),
+    url,
+  ].join("\n");
+  const compatible =
+    foto &&
+    !!navigator.share &&
+    navigator.canShare?.({ files: [foto], text: texto });
+  async function prepararFoto() {
+    cargar(true);
+    informar("");
+    try {
+      const png = await generar();
+      const blob = await (await fetch(png)).blob();
+      preparar(
+        new File([blob], "Boleto-" + numero(b.numero) + ".png", {
+          type: "image/png",
+        }),
+      );
+      descargar(png);
+    } catch {
+      informar(
+        "No se pudo preparar la imagen. Revisa las fotos y vuelve a intentar.",
+      );
+    } finally {
+      cargar(false);
+    }
+  }
+  return (
+    <details
+      className="compartir"
+      onToggle={(e) => {
+        if (e.currentTarget.open && !foto && !ocupado) void prepararFoto();
+      }}
+    >
+      <summary>Compartir por WhatsApp</summary>
+      <Campo titulo="Teléfono para este envío">
+        <input
+          type="tel"
+          value={telefono}
+          placeholder="+51 987 654 321"
+          onChange={(e) => corregir(e.target.value)}
+        />
+      </Campo>
+      {!destino && (
+        <p>
+          Ingresa un celular peruano de nueve dígitos o un número internacional
+          con + para abrir su chat.
+        </p>
+      )}
+      <Campo titulo="Mensaje personalizado">
+        <textarea value={mensaje} onChange={(e) => editar(e.target.value)} />
+      </Campo>
+      <p>
+        {b.rifa} · {b.participante} · {numero(b.numero)} ·{" "}
+        {fechaBoleto.format(new Date(b.fecha))}
+      </p>
+      {!foto ? (
+        <button disabled={ocupado} onClick={prepararFoto}>
+          {ocupado ? "Preparando imagen…" : "Preparar imagen"}
+        </button>
+      ) : (
+        <>
+          {compatible && (
+            <button
+              onClick={async () => {
+                try {
+                  await navigator.share({ files: [foto], text: texto });
+                } catch (e) {
+                  if (!(e instanceof DOMException && e.name === "AbortError"))
+                    informar("Puedes usar la descarga manual.");
+                }
+              }}
+            >
+              Compartir imagen y mensaje
+            </button>
+          )}
+          <p>
+            Para enviar al cliente, descarga el PNG y adjúntalo en su chat. Si
+            usas el selector del dispositivo, elige allí la aplicación y el
+            contacto.
+          </p>
+          <a href={imagen} download={foto.name}>
+            Descargar imagen
+          </a>
+          {" · "}
+          {destino && (
+            <a
+              href={
+                "https://wa.me/" +
+                destino +
+                "?text=" +
+                encodeURIComponent(texto)
+              }
+              target="_blank"
+              rel="noreferrer"
+            >
+              Abrir WhatsApp
+            </a>
+          )}
+        </>
+      )}
+      <p role="status">{aviso}</p>
+    </details>
   );
 }
 function EditorPlantilla({
@@ -545,13 +719,26 @@ export function Publico({ token }: { token: string }) {
         body: { token },
       });
       if (error) {
-        const status = error.context?.status;
+        const respuesta = error.context;
+        const status = respuesta?.status;
+        if (status === 404 && respuesta instanceof Response) {
+          const detalle = await respuesta
+            .clone()
+            .json()
+            .catch(() => null);
+          if (detalle?.code === "NOT_FOUND")
+            throw Error(
+              "La consulta pública aún no está desplegada en este proyecto de Supabase.",
+            );
+        }
         throw Error(
           status === 404
             ? "Boleto no encontrado."
             : status === 429
               ? "Demasiadas consultas. Intenta en un minuto."
-              : "No se pudo consultar el boleto.",
+              : status === 503
+                ? "El servicio de boletos está temporalmente fuera de servicio."
+                : "No se pudo conectar con la consulta pública. Comprueba tu conexión o contacta con la organización.",
         );
       }
       if (vivo) set(data);
@@ -563,7 +750,7 @@ export function Publico({ token }: { token: string }) {
   }, [token]);
   return (
     <main className="publico">
-      <p className="ceja">RIFAFÁCIL</p>
+      <p className="ceja">RifaPes</p>
       <h1>Consulta de boleto</h1>
       {b ? <Tarjeta b={b} /> : <p role="status">{msg}</p>}
     </main>
@@ -591,18 +778,14 @@ export function Boletos({
     let vivo = true;
     async function cargar() {
       const f: [string, string] = ["id_rifa", r.id_rifa];
-      const [t, c, d, b, contactos] = await Promise.all([
+      const [t, c, b, contactos] = await Promise.all([
         filas<Visual>("plantilla_boleto", f),
         filas<Fila>("configuracion_transmision", f),
-        filas<Fila>("vw_detalle_ventas", f, "id_detalle_venta"),
-        filas<Boleto>("boleto", undefined, "id_boleto"),
+        filas<BoletoComprador>("vw_boletos_rifa", f, "id_boleto"),
         filas<Persona>("persona", undefined, "id_persona"),
       ]);
       const telefonos = new Map(
         contactos.map((p) => [p.id_persona, p.telefono]),
-      );
-      const personas = new Map(
-        d.map((x) => [x.id_detalle_venta, x.id_persona]),
       );
       if (vivo) {
         plantilla(t[0]);
@@ -611,7 +794,7 @@ export function Boletos({
         boletos(
           b
             .flatMap((x) => {
-              const id = personas.get(x.id_detalle_venta);
+              const id = x.id_persona;
               if (typeof id !== "string") return [];
               const historico = x.datos_emision_historicos;
               return [
@@ -733,7 +916,10 @@ export function Boletos({
       )}
       <h2>Boletos emitidos</h2>
       {!bs.length ? (
-        <p>Los boletos aparecen cuando el pago de la venta está completo.</p>
+        <p>
+          Puedes emitir los boletos desde una reserva o venta. Al completar el
+          pago se emiten automáticamente.
+        </p>
       ) : (
         <Campo titulo="Seleccionar boleto">
           <select

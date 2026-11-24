@@ -1,14 +1,30 @@
-import { useState, useRef, type ReactNode, type FormEvent } from "react";
+import { Ayuda, type TemaAyuda } from "./ayuda";
+import {
+  useState,
+  useRef,
+  useId,
+  cloneElement,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+  type FormEvent,
+} from "react";
 export function Formulario({
   children,
   guardar,
   accion = "Guardar",
   limpiar = false,
+  deshabilitado = false,
+  ayuda,
+  clase,
 }: {
   children: ReactNode;
   guardar: (f: FormData) => Promise<unknown>;
   accion?: string;
+  clase?: string;
   limpiar?: boolean;
+  deshabilitado?: boolean;
+  ayuda?: TemaAyuda;
 }) {
   const [ocupado, set] = useState(false),
     [aviso, msg] = useState("");
@@ -32,12 +48,15 @@ export function Formulario({
     }
   }
   return (
-    <form onSubmit={enviar}>
+    <form className={clase} onSubmit={enviar}>
       <fieldset disabled={ocupado}>
         {children}
-        <button className="principal" type="submit">
-          {ocupado ? "Procesando…" : accion}
-        </button>
+        <span className="accion-form">
+          <button disabled={deshabilitado} className="principal" type="submit">
+            {ocupado ? "Procesando…" : accion}
+          </button>
+          {ayuda && <Ayuda tema={ayuda} />}
+        </span>
       </fieldset>
       <span role="status">{aviso}</span>
     </form>
@@ -45,27 +64,42 @@ export function Formulario({
 }
 export function Campo({
   titulo,
+  ayuda,
   children,
 }: {
   titulo: string;
+  ayuda?: TemaAyuda;
   children: ReactNode;
 }) {
+  const id = useId();
+  if (ayuda && isValidElement(children))
+    return (
+      <div className="campo-ayuda">
+        <span className="etiqueta">
+          <label htmlFor={id}>{titulo}</label>
+          <Ayuda tema={ayuda} />
+        </span>
+        {cloneElement(children as ReactElement<{ id: string }>, { id })}
+      </div>
+    );
   return (
     <label>
-      {titulo}
+      <span className="etiqueta">{titulo}</span>
       {children}
     </label>
   );
 }
 export function Accion({
   texto,
+  ayuda,
   ejecutar,
 }: {
   texto: string;
+  ayuda?: TemaAyuda;
   ejecutar: () => Promise<unknown>;
 }) {
   return (
-    <Formulario accion={texto} guardar={ejecutar}>
+    <Formulario ayuda={ayuda} accion={texto} guardar={ejecutar}>
       {null}
     </Formulario>
   );

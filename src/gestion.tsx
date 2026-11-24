@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { ResumenPagos, type DatosResumen } from "./pagos";
+import { Ayuda } from "./ayuda";
+import { useEffect, useId, useState } from "react";
 import { Campo, Formulario, Accion } from "./controles";
 import {
   campo,
@@ -77,7 +79,7 @@ export function EditarRifa({
             <option>200</option>
           </datalist>
         </Campo>
-        <Campo titulo="Fecha y hora en Perú">
+        <Campo titulo="Fecha y hora de la rifa">
           <input
             type="datetime-local"
             name="fecha"
@@ -116,11 +118,20 @@ function EditorPremio({
   premios: Premio[];
   recargar: () => void;
 }) {
+  const sorpresaId = useId();
   const [destacar, cambiar] = useState(p?.prioridad != null);
   const ocupados = premios.filter(
     (x) => x.prioridad != null && x.id_premio_rifa !== p?.id_premio_rifa,
   );
-  const prioridades = [1, 2, 3, 4, 5];
+  const prioridades = Array.from(
+    new Set([
+      ...Array.from(
+        { length: Math.max(3, premios.length + 1) },
+        (_, i) => i + 1,
+      ),
+      ...premios.flatMap((x) => (x.prioridad ? [x.prioridad] : [])),
+    ]),
+  ).sort((a, b) => a - b);
   return (
     <Formulario
       limpiar={!p}
@@ -154,7 +165,7 @@ function EditorPremio({
           defaultValue={p?.orden_sorteo ?? siguiente}
         />
       </Campo>
-      <Campo titulo="Extracción ganadora">
+      <Campo titulo="Número ganador" ayuda="Número ganador">
         <input
           name="extraccion"
           type="number"
@@ -163,32 +174,30 @@ function EditorPremio({
           defaultValue={p?.numero_extraccion_ganadora ?? 1}
         />
       </Campo>
-      <label className="interruptor">
-        Sorpresa
+      <div className="interruptor">
+        <span className="etiqueta">
+          <label htmlFor={sorpresaId}>Sorpresa</label>
+          <Ayuda tema="Sorpresa" />
+        </span>
         <input
           role="switch"
           name="sorpresa"
+          id={sorpresaId}
           type="checkbox"
           defaultChecked={p?.es_sorpresa}
         />
-      </label>
+      </div>
       <label className="interruptor">
         Destacar en boleto
         <input
           role="switch"
           type="checkbox"
           checked={destacar}
-          disabled={!destacar && ocupados.length >= 5}
           onChange={(e) => cambiar(e.target.checked)}
         />
       </label>
-      {ocupados.length >= 5 && !destacar && (
-        <p>
-          Ya hay cinco premios destacados. Desactiva uno para liberar espacio.
-        </p>
-      )}
       {destacar && (
-        <Campo titulo="Prioridad en el boleto">
+        <Campo titulo="Prioridad en el boleto" ayuda="Prioridad">
           <select
             name="prioridad"
             defaultValue={
@@ -301,12 +310,16 @@ export function PanelRifa({
           {premios.map((p) => (
             <details key={p.id_premio_rifa}>
               <summary>
-                {p.orden_sorteo}. {p.nombre} · extracción{" "}
+                {p.orden_sorteo}. {p.nombre} · número ganador en la selección{" "}
                 {p.numero_extraccion_ganadora}
                 {p.es_sorpresa ? " · Sorpresa" : ""}
               </summary>
-              {p.imagen_url && (
-                <img className="foto" src={p.imagen_url} alt={p.nombre} />
+              {(p.es_sorpresa || p.imagen_url) && (
+                <img
+                  className="foto"
+                  src={p.es_sorpresa ? "/regalo-sorpresa.svg" : p.imagen_url!}
+                  alt={p.es_sorpresa ? "Premio sorpresa" : p.nombre}
+                />
               )}
               <p>{p.descripcion}</p>
               {r.estado === "activa" && (
@@ -337,6 +350,32 @@ export function PanelRifa({
           ))}
           {r.estado === "activa" && (
             <section>
+              <details>
+                <summary>Agregar sorteo por puestos</summary>
+                <Formulario
+                  accion="Agregar los tres puestos"
+                  limpiar
+                  guardar={async (f) => {
+                    await rpc("agregar_puestos", {
+                      p_rifa: r.id_rifa,
+                      p_tercero: campo(f, "tercero"),
+                      p_segundo: campo(f, "segundo"),
+                      p_primero: campo(f, "primero"),
+                    });
+                    recargar();
+                  }}
+                >
+                  <p>
+                    Se sortearán en este orden. Puedes editar la foto y la
+                    prioridad de cada puesto después.
+                  </p>
+                  {["tercero", "segundo", "primero"].map((puesto) => (
+                    <Campo key={puesto} titulo={"Premio del puesto " + puesto}>
+                      <input name={puesto} required />
+                    </Campo>
+                  ))}
+                </Formulario>
+              </details>
               <h3>Agregar premio</h3>
               <EditorPremio
                 key={premios.length}
@@ -375,6 +414,7 @@ export function Participantes({
     [busca, buscar] = useState(""),
     [id, abrir] = useState(""),
     [edicion, editar] = useState(""),
+    [finanzas, guardarFinanzas] = useState<DatosResumen[]>([]),
     [hist, guardar] = useState<string[]>([]),
     [err, error] = useState("");
   useEffect(() => {
@@ -400,53 +440,40 @@ export function Participantes({
       const mostrar = (i: unknown) =>
         rifas.find((r) => r.id_rifa === i)?.nombre || "Rifa";
       const textos: string[] = [];
+      const cuentas: DatosResumen[] = [];
       for (const venta of new Set(ventas.map((v) => String(v.id_venta)))) {
         const lineas = ventas.filter((v) => v.id_venta === venta);
         const pagos = await filas<Fila>("pago", ["id_venta", venta], "id_pago");
-        const saldo =
-          (Math.round(Number(lineas[0].total) * 100) -
-            pagos.reduce(
-              (s, p) => s + Math.round(Number(p.importe) * 100),
-              0,
-            )) /
-          100;
-        textos.push(
-          mostrar(lineas[0].id_rifa) +
-            " · " +
-            fecha(String(lineas[0].fecha_venta)) +
-            " · " +
-            lineas[0].estado +
-            " · números " +
-            lineas.map((v) => numero(Number(v.numero))).join(", ") +
-            " · " +
-            "Total " +
-            soles(Number(lineas[0].total)) +
-            (lineas[0].estado === "pendiente"
-              ? " · Saldo " + soles(saldo)
-              : ""),
-        );
-        pagos.forEach((p) =>
-          textos.push(
-            "Pago " + p.medio_pago + " · " + soles(Number(p.importe)),
-          ),
-        );
-        for (const v of lineas) {
-          const bs = await filas<Boleto>("boleto", [
-            "id_detalle_venta",
-            String(v.id_detalle_venta),
-          ]);
-          bs.forEach((b) =>
-            textos.push(
-              "Boleto " +
-                numero(Number(v.numero)) +
-                " · " +
-                b.estado +
-                " · " +
-                b.token_publico,
-            ),
-          );
-        }
+        cuentas.push({
+          cantidad: lineas.length,
+          total: Number(lineas[0].total),
+          cobrado:
+            pagos.reduce((s, p) => s + Math.round(Number(p.importe) * 100), 0) /
+            100,
+          cancelada: lineas[0].estado === "cancelada",
+          identidad: [
+            mostrar(lineas[0].id_rifa),
+            fecha(String(lineas[0].fecha_venta)),
+            lineas.map((v) => "N.º " + numero(Number(v.numero))).join(", "),
+          ].join(" · "),
+          movimientos: pagos,
+        });
       }
+      const boletos = await filas<
+        Boleto & { id_rifa: string; id_reserva: string | null }
+      >("vw_boletos_rifa", ["id_persona", id], "id_boleto");
+      boletos.forEach((b) =>
+        textos.push(
+          mostrar(b.id_rifa) +
+            " · Boleto " +
+            numero(b.datos_emision_historicos.numero) +
+            " · " +
+            b.estado +
+            (b.id_reserva ? " · Reserva sin pago" : "") +
+            " · " +
+            b.token_publico,
+        ),
+      );
       resultados.forEach((p) =>
         textos.push(
           mostrar(p.id_rifa) +
@@ -456,7 +483,10 @@ export function Participantes({
             numero(Number(p.numero)),
         ),
       );
-      if (vivo) guardar(textos);
+      if (vivo) {
+        guardar(textos);
+        guardarFinanzas(cuentas);
+      }
     }
     guardar([]);
     void ficha().catch((e) => error(e.message));
@@ -593,11 +623,12 @@ export function Participantes({
               </button>
             </Formulario>
           )}
-          {hist.length ? (
-            hist.map((s, i) => <p key={i}>{s}</p>)
-          ) : (
-            <p>Sin movimientos registrados.</p>
-          )}
+          {finanzas.map((cuenta, i) => (
+            <ResumenPagos key={i} {...cuenta} />
+          ))}
+          {hist.length
+            ? hist.map((s, i) => <p key={i}>{s}</p>)
+            : !finanzas.length && <p>Sin movimientos registrados.</p>}
         </section>
       )}
       <section>

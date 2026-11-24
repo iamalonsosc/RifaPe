@@ -17,7 +17,7 @@ import "./estilo.css";
 
 function Inicio() {
   const [sesion, setSesion] = useState<string | null | undefined>(undefined),
-    [autorizada, setAutorizada] = useState(false),
+    [perfilCargado, setPerfilCargado] = useState<string | null>(null),
     [error, setError] = useState("");
   const [tema, setTema] = useState(localStorage.getItem("tema") || "claro"),
     [seccion, ir] = useState("Resumen"),
@@ -28,6 +28,20 @@ function Inicio() {
     [idEstadisticas, filtrarResumen] = useState(""),
     [version, actualizar] = useState(0);
   const rifaEstadisticas = rifas.find((r) => r.id_rifa === idEstadisticas);
+  const [ahora, reloj] = useState(Date.now);
+  useEffect(() => {
+    const t = setInterval(() => reloj(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
+  const grupo = (r: Rifa) =>
+    r.estado !== "activa" ? 2 : Date.parse(r.fecha_sorteo) < ahora ? 1 : 0;
+  const ordenadas = [...rifas].sort(
+    (a, b) =>
+      grupo(a) - grupo(b) ||
+      (grupo(a) === 0 ? 1 : -1) *
+        (Date.parse(a.fecha_sorteo) - Date.parse(b.fecha_sorteo)) ||
+      a.nombre.localeCompare(b.nombre),
+  );
   const cifras = rifaEstadisticas
     ? resumen.filter((s) => s.id_rifa === rifaEstadisticas.id_rifa)
     : resumen;
@@ -46,7 +60,7 @@ function Inicio() {
   useEffect(() => {
     let vigente = true;
     if (!sesion) {
-      setAutorizada(false);
+      setPerfilCargado(null);
       return;
     }
     async function cargar() {
@@ -61,7 +75,7 @@ function Inicio() {
         if (vigente) {
           setRifas(r);
           setResumen(s);
-          setAutorizada(true);
+          setPerfilCargado(sesion!);
           setError("");
         }
       } catch (e) {
@@ -73,19 +87,21 @@ function Inicio() {
       vigente = false;
     };
   }, [sesion, version]);
-  if (!db || !sesion || !autorizada)
+  if (!db || !sesion || perfilCargado !== sesion)
     return (
       <main className="acceso">
         <div className="marca">
-          <Icono /> RifaFácil
+          <Icono /> RifaPes
         </div>
         <section>
           <p className="ceja">ADMINISTRACIÓN DE RIFAS</p>
           <h1>Iniciar sesión</h1>
           {!db ? (
             <p>
-              Configura la URL y la clave pública de Supabase en el archivo
-              .env.local para habilitar el acceso.
+              Configura VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY. En
+              Netlify, guarda ambas variables en la configuración del proyecto y
+              vuelve a desplegar. Para pruebas locales, guárdalas en .env.local
+              y reinicia la aplicación.
             </p>
           ) : sesion === undefined ? (
             <p>Cargando sesión…</p>
@@ -136,7 +152,7 @@ function Inicio() {
     <div className="app">
       <aside>
         <div className="marca">
-          <Icono /> RifaFácil
+          <Icono /> RifaPes
         </div>
         <nav>
           {[
@@ -172,7 +188,7 @@ function Inicio() {
       <main>
         <header>
           <span>Administración</span>
-          <span>Hora de Perú · PEN</span>
+          <span>© Industrias Sanchez</span>
         </header>
         {error && <p role="alert">{error}</p>}
         {elegida ? (
@@ -222,9 +238,10 @@ function Inicio() {
                     <option value="">
                       Todas las rifas (incluye terminadas)
                     </option>
-                    {rifas.map((r) => (
+                    {ordenadas.map((r) => (
                       <option key={r.id_rifa} value={r.id_rifa}>
-                        {r.nombre} · {r.estado.replace("_", " ")} ·{" "}
+                        {r.nombre} · {r.estado.replace("_", " ")}
+                        {grupo(r) === 1 ? " · Fecha vencida" : ""} ·{" "}
                         {fecha(r.fecha_sorteo)}
                       </option>
                     ))}
@@ -274,7 +291,7 @@ function Inicio() {
               </section>
             )}
             <div className="tarjetas">
-              {rifas.map((r) => {
+              {ordenadas.map((r) => {
                 const n = Number(
                   resumen.find((s) => s.id_rifa === r.id_rifa)?.vendidos || 0,
                 );
@@ -287,7 +304,10 @@ function Inicio() {
                       abrir(r.id_rifa);
                     }}
                   >
-                    <small>{r.estado.replace("_", " ")}</small>
+                    <small>
+                      {r.estado.replace("_", " ")}
+                      {grupo(r) === 1 ? " · Fecha vencida" : ""}
+                    </small>
                     <h3>{r.nombre}</h3>
                     <p>{fecha(r.fecha_sorteo)}</p>
                     <progress value={n} max={r.cantidad_numeros} />

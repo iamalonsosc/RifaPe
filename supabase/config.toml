@@ -1,4 +1,4 @@
-project_id = "rifafacil"
+project_id = "rifapes"
 [auth]
 enable_signup = false
 [functions.consultar-boleto]
