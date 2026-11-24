@@ -26,6 +26,7 @@ function Inicio() {
   const [rifas, setRifas] = useState<Rifa[]>([]),
     [resumen, setResumen] = useState<Fila[]>([]),
     [idEstadisticas, filtrarResumen] = useState(""),
+    [estados, ponerEstados] = useState<Fila[]>([]),
     [version, actualizar] = useState(0);
   const rifaEstadisticas = rifas.find((r) => r.id_rifa === idEstadisticas);
   const [ahora, reloj] = useState(Date.now);
@@ -35,11 +36,23 @@ function Inicio() {
   }, []);
   const grupo = (r: Rifa) =>
     r.estado !== "activa" ? 2 : Date.parse(r.fecha_sorteo) < ahora ? 1 : 0;
+  const fechasEstado = new Map(estados.map((e) => [e.id_rifa, e]));
+  const tiempo = (r: Rifa) =>
+    Date.parse(
+      String(
+        fechasEstado.get(r.id_rifa)?.[
+          {
+            en_sorteo: "fecha_inicio",
+            terminada: "fecha_fin",
+            anulada: "fecha_anulacion",
+          }[r.estado] ?? ""
+        ] ?? r.fecha_sorteo,
+      ),
+    );
   const ordenadas = [...rifas].sort(
     (a, b) =>
       grupo(a) - grupo(b) ||
-      (grupo(a) === 0 ? 1 : -1) *
-        (Date.parse(a.fecha_sorteo) - Date.parse(b.fecha_sorteo)) ||
+      (grupo(a) === 0 ? 1 : -1) * (tiempo(a) - tiempo(b)) ||
       a.nombre.localeCompare(b.nombre),
   );
   const cifras = rifaEstadisticas
@@ -68,13 +81,16 @@ function Inicio() {
         const p = await filas("perfil", ["id_perfil", sesion!]);
         if (!p.length)
           throw Error("Esta cuenta no tiene el perfil de administradora.");
-        const [r, s] = await Promise.all([
+        const [r, s, e] = await Promise.all([
           filas<Rifa>("rifa", undefined, "id_rifa"),
+
           filas<Fila>("vw_resumen_rifa", undefined, "id_rifa"),
+          filas<Fila>("vw_estados_rifa", undefined, "id_rifa"),
         ]);
         if (vigente) {
           setRifas(r);
           setResumen(s);
+          ponerEstados(e);
           setPerfilCargado(sesion!);
           setError("");
         }
@@ -290,41 +306,80 @@ function Inicio() {
                 </p>
               </section>
             )}
-            <div className="tarjetas">
-              {ordenadas.map((r) => {
-                const n = Number(
-                  resumen.find((s) => s.id_rifa === r.id_rifa)?.vendidos || 0,
-                );
-                return (
-                  <button
-                    key={r.id_rifa}
-                    className="tarjeta"
-                    onClick={() => {
-                      ir("Rifas");
-                      abrir(r.id_rifa);
-                    }}
-                  >
-                    <small>
-                      {r.estado.replace("_", " ")}
-                      {grupo(r) === 1 ? " · Fecha vencida" : ""}
-                    </small>
-                    <h3>{r.nombre}</h3>
-                    <p>{fecha(r.fecha_sorteo)}</p>
-                    <progress value={n} max={r.cantidad_numeros} />
-                    <span>
-                      {n} de {r.cantidad_numeros} vendidos
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            {[
+              ["activa", "Activas"],
+              ["en_sorteo", "En sorteo"],
+              ["terminada", "Terminadas"],
+              ["anulada", "Anuladas"],
+            ].map(([estado, titulo]) => {
+              const lista = ordenadas.filter((r) => r.estado === estado);
+              return (
+                <details
+                  key={estado}
+                  className={"grupo-rifas " + estado}
+                  open={estado === "activa" || estado === "en_sorteo"}
+                >
+                  <summary>
+                    {titulo} ({lista.length})
+                  </summary>
+                  {!lista.length && <p>Sin rifas en esta sección.</p>}
+                  <div className="tarjetas">
+                    {lista.map((r) => {
+                      const n = Number(
+                        resumen.find((s) => s.id_rifa === r.id_rifa)
+                          ?.vendidos || 0,
+                      );
+                      return (
+                        <button
+                          key={r.id_rifa}
+                          className="tarjeta"
+                          onClick={() => {
+                            ir("Rifas");
+                            abrir(r.id_rifa);
+                          }}
+                        >
+                          <small>
+                            {r.estado.replace("_", " ")}
+                            {grupo(r) === 1 ? " · Fecha vencida" : ""}
+                          </small>
+                          <h3>{r.nombre}</h3>
+                          {r.estado === "anulada" && (
+                            <p>
+                              {fechasEstado.get(r.id_rifa)?.motivo} · Por
+                              devolver{" "}
+                              {soles(
+                                Number(
+                                  fechasEstado.get(r.id_rifa)?.por_devolver ??
+                                    0,
+                                ),
+                              )}{" "}
+                              · Devuelto{" "}
+                              {soles(
+                                Number(
+                                  fechasEstado.get(r.id_rifa)?.devuelto ?? 0,
+                                ),
+                              )}
+                            </p>
+                          )}
+                          <p>{fecha(r.fecha_sorteo)}</p>
+                          <progress value={n} max={r.cantidad_numeros} />
+                          <span>
+                            {n} de {r.cantidad_numeros} vendidos
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </details>
+              );
+            })}
           </>
         )}
       </main>
     </div>
   );
 }
-const ruta = location.pathname.match(/^\/boleto\/([^/]+)\/?$/);
+const ruta = location.pathname.match(/^\/(boleto|rifa)\/([^/]+)\/?$/);
 createRoot(document.getElementById("root")!).render(
-  ruta ? <Publico token={ruta[1]} /> : <Inicio />,
+  ruta ? <Publico token={ruta[2]} esRifa={ruta[1] === "rifa"} /> : <Inicio />,
 );

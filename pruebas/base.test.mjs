@@ -33,7 +33,61 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
           "insert into auth.users values($1,'admin@example.invalid','{\"rol_rifafacil\":\"administradora\"}')",
           [admin],
         );
-      await q(await readFile(join("supabase/migrations", file), "utf8"));
+      const migracion = await readFile(
+        join("supabase/migrations", file),
+        "utf8",
+      );
+      if (file.startsWith("20261124000100")) {
+        await t.test(
+          "Actualización desde la versión 12 con boleto pagado y QR anterior",
+          async () => {
+            await q("begin");
+            try {
+              await q("set local role authenticated");
+              await q("select set_config('request.jwt.claim.sub',$1,true)", [
+                admin,
+              ]);
+              const r = await uno(
+                "select guardar_rifa('Anterior',10,4,now(),'numero')",
+              );
+              const p = await uno(
+                "select guardar_persona('Participante anterior')",
+              );
+              const v = await uno(
+                "select registrar_venta($1,$2,array(select id_numero_rifa from numero_rifa where id_rifa=$1 order by numero limit 2))",
+                [r, p],
+              );
+              await q("select confirmar_pago($1,20,'yape')", [v]);
+              const anterior = await uno(
+                "select token_publico from vw_boletos_rifa where id_venta=$1 limit 1",
+                [v],
+              );
+              await q("reset role");
+              await q(
+                migracion.replace(/^begin;/i, "").replace(/commit;\s*$/i, ""),
+              );
+              await q("set local role service_role");
+              const ticket = await uno("select consultar_boleto($1)", [
+                anterior,
+              ]);
+              assert.equal(ticket.codigo, anterior);
+              assert.deepEqual(ticket.numeros, [1, 2]);
+              assert.equal(ticket.telefono, undefined);
+              assert.deepEqual(
+                (
+                  await uno("select consultar_boleto($1)", [
+                    ticket.codigo_grupo,
+                  ])
+                ).numeros,
+                [1, 2],
+              );
+            } finally {
+              await q("rollback");
+            }
+          },
+        );
+      }
+      await q(migracion);
     }
     assert.equal(
       await uno("select plaza from perfil where id_perfil=$1", [admin]),
@@ -546,6 +600,290 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
           ]),
           "0",
         );
+      },
+    );
+    await t.test(
+      "Cotización óptima, compras independientes, redondeo y devoluciones",
+      async () => {
+        const crearOfertas = (id, lista) =>
+          uno(
+            "select guardar_rifa_ofertas('Promos',10,120,now(),'numero',null,null,$1,$2)",
+            [id, JSON.stringify(lista)],
+          );
+        const tarifa = (cantidad, precio) => ({
+          cantidad,
+          precio,
+          activa: true,
+        });
+        const id = await crearOfertas(null, [tarifa(3, 25)]);
+        const cotizar = async (n) =>
+          (await uno("select cotizar_compra($1,$2)", [id, n])).total;
+        const importes = [];
+        for (const n of [1, 3, 4, 6]) importes.push(await cotizar(n));
+        assert.deepEqual(importes, [10, 25, 35, 50]);
+        await assert.rejects(crearOfertas(id, [tarifa(3, 25), tarifa(3, 24)]));
+        for (const mala of [
+          tarifa(1, 4),
+          tarifa(3, 31),
+          tarifa(3, 0),
+          tarifa(3, 24.999),
+        ])
+          await assert.rejects(crearOfertas(id, [mala]));
+        const ns = (
+          await q(
+            "select id_numero_rifa from numero_rifa where id_rifa=$1 order by numero",
+            [id],
+          )
+        ).map((n) => n.id_numero_rifa);
+        const compra = (ids, total, quien = persona) =>
+          uno("select registrar_venta_cotizada($1,$2,$3,$4)", [
+            id,
+            quien,
+            ids,
+            total,
+          ]);
+        await assert.rejects(compra(ns.slice(0, 3), 30));
+        const v = await compra(ns.slice(0, 3), 25);
+        assert.equal(
+          await uno(
+            "select sum(precio_unitario) from detalle_venta where id_venta=$1",
+            [v],
+          ),
+          "25.00",
+        );
+        await pago(v, 15);
+        assert.equal(
+          await uno("select saldo from vw_pagos_pendientes where id_venta=$1", [
+            v,
+          ]),
+          "10.00",
+        );
+        const token = await uno(
+          "select token_grupo from vw_comprobantes where id_rifa=$1 and id_persona=$2",
+          [id, persona],
+        );
+        const separado = await compra(ns.slice(3, 5), 20);
+        await compra(ns.slice(5, 6), 10);
+        assert.equal(
+          await uno("select total from venta where id_venta=$1", [separado]),
+          "20.00",
+        );
+        const otro = await uno("select guardar_persona('Alonso')");
+        await compra(ns.slice(6, 7), 10, otro);
+        assert.equal(
+          await uno("select count(*) from vw_comprobantes where id_rifa=$1", [
+            id,
+          ]),
+          "2",
+        );
+        assert.deepEqual(
+          await uno(
+            "select numeros from vw_comprobantes where token_grupo=$1",
+            [token],
+          ),
+          [1, 2, 3, 4, 5, 6],
+        );
+        await crearOfertas(id, [tarifa(3, 20), tarifa(4, 24)]);
+        assert.equal(await cotizar(6), 40); // Dos tríos ganan a un cuarteto más dos individuales.
+        const detalles = (
+          await q(
+            "select id_detalle_venta from detalle_venta where id_venta=$1 order by id_numero_rifa",
+            [v],
+          )
+        ).map((d) => d.id_detalle_venta);
+        const ajustar = (
+          ids,
+          confirmar = false,
+          total = null,
+          cobrado = null,
+        ) =>
+          uno("select ajustar_numeros_venta($1,$2,$3,'Solicitud',$4,$5)", [
+            v,
+            ids,
+            confirmar,
+            total,
+            cobrado,
+          ]);
+        let ajuste = await ajustar(detalles.slice(0, 1));
+        assert.deepEqual(ajuste, {
+          total: 20,
+          cobrado: 15,
+          saldo: 5,
+          devolver: 0,
+        });
+        await assert.rejects(ajustar(detalles.slice(0, 1), true, 25, 15));
+        await ajustar(detalles.slice(0, 1), true, 20, 15);
+        await pago(v, 5);
+        ajuste = await ajustar(detalles.slice(1, 2));
+        assert.equal(ajuste.devolver, 10);
+        await ajustar(detalles.slice(1, 2), true, 10, 20);
+        const reembolso = await uno(
+          "select d.id_devolucion from devolucion d join pago using(id_pago) where id_venta=$1 limit 1",
+          [v],
+        );
+        await q("select confirmar_devolucion($1)", [reembolso]);
+        assert.equal(
+          (
+            await uno(
+              "select numeros from vw_comprobantes where token_grupo=$1",
+              [token],
+            )
+          ).length,
+          4,
+        );
+        await q("select anular_rifa($1,'Evento suspendido')", [id]);
+        assert.equal(
+          await uno("select estado from vw_comprobantes where token_grupo=$1", [
+            token,
+          ]),
+          "anulado",
+        );
+        assert.equal(
+          await uno(
+            "select recaudacion from vw_resumen_rifa where id_rifa=$1",
+            [id],
+          ),
+          "0",
+        );
+        assert.equal(
+          Number(
+            await uno(
+              "select por_devolver+devuelto from vw_estados_rifa where id_rifa=$1",
+              [id],
+            ),
+          ),
+          20,
+        );
+        await assert.rejects(compra(ns.slice(8, 9), 10));
+        await assert.rejects(pago(v, 1));
+        await assert.rejects(q("select iniciar_sorteo($1)", [id]));
+        await assert.rejects(q("select anular_rifa($1,'Otra vez')", [id]));
+        await q("reset role");
+        await q("set role service_role");
+        assert.equal(
+          (await uno("select consultar_boleto($1)", [token])).estado_rifa,
+          "anulada",
+        );
+        await q("reset role");
+        await q("set role authenticated");
+      },
+    );
+    await t.test(
+      "Tarifas originales y devolución del dinero efectivamente recibido",
+      async () => {
+        const crear = async (id, precio) =>
+          uno(
+            "select guardar_rifa_ofertas('Tres por veinticinco',10,12,now(),'numero',null,null,$1,$2)",
+            [id, JSON.stringify([{ cantidad: 3, precio, activa: true }])],
+          );
+        const id = await crear(null, 25);
+        const nums = (
+          await q(
+            "select id_numero_rifa from numero_rifa where id_rifa=$1 order by numero",
+            [id],
+          )
+        ).map((n) => n.id_numero_rifa);
+        const venta = async (ids) =>
+          uno("select registrar_venta($1,$2,$3)", [id, persona, ids]);
+        const completa = await venta(nums.slice(0, 3)),
+          parcial = await venta(nums.slice(3, 6)),
+          cuatro = await venta(nums.slice(6, 10));
+        await pago(completa, 25);
+        await pago(parcial, 15);
+        await crear(id, 19);
+        const linea = await uno(
+          "select id_detalle_venta from detalle_venta where id_venta=$1 limit 1",
+          [cuatro],
+        );
+        assert.equal(
+          (await uno("select ajustar_numeros_venta($1,$2)", [cuatro, [linea]]))
+            .total,
+          25,
+        );
+        await q("select anular_rifa($1,'Evento cancelado')", [id]);
+        for (const [v, esperado] of [
+          [completa, 25],
+          [parcial, 15],
+          [cuatro, 0],
+        ])
+          assert.equal(
+            Number(
+              await uno(
+                "select coalesce(sum(d.importe),0) from devolucion d join pago p using(id_pago) where p.id_venta=$1",
+                [v],
+              ),
+            ),
+            esperado,
+          );
+        const publico = await uno(
+          "select token_consulta from rifa where id_rifa=$1",
+          [id],
+        );
+        await q("reset role");
+        await q("set role service_role");
+        assert.equal(
+          (await uno("select consultar_boleto($1)", [publico])).estado,
+          "anulada",
+        );
+        await q("reset role");
+        await q("set role authenticated");
+      },
+    );
+    await t.test(
+      "Anulación antes y durante el sorteo conserva el ganador",
+      async () => {
+        const vacia = await crear("numero");
+        await q("select anular_rifa($1,'Sin ventas')", [vacia]);
+        const id = await crear("numero");
+        const ids = (
+          await q(
+            "select id_numero_rifa from numero_rifa where id_rifa=$1 limit 2",
+            [id],
+          )
+        ).map((n) => n.id_numero_rifa);
+        const v = await vender(ids, id);
+        await pago(v, 20);
+        for (let i = 1; i <= 2; i++)
+          await q("select guardar_premio($1,$2,$3,1,false)", [
+            id,
+            "Premio " + i,
+            i,
+          ]);
+        await q("select iniciar_sorteo($1)", [id]);
+        const premio = await uno(
+          "select id_premio_rifa from premio_rifa where id_rifa=$1 order by orden_sorteo",
+          [id],
+        );
+        await q("select extraer_numero_sorteo($1,$2,1,$3)", [
+          id,
+          premio,
+          randomUUID(),
+        ]);
+        await assert.rejects(q("select anular_rifa($1,'Interrupción')", [id]));
+        await q("select anular_rifa($1,'Interrupción','Noviembre')", [id]);
+        assert.equal(
+          await uno(
+            "select count(*) from vw_historial_ganadores where id_rifa=$1",
+            [id],
+          ),
+          "1",
+        );
+        await assert.rejects(q("select finalizar_sorteo($1)", [id]));
+        const devolucion = await uno(
+          "select id_devolucion from devolucion join pago using(id_pago) where id_venta=$1",
+          [v],
+        );
+        await q("select confirmar_devolucion($1)", [devolucion]);
+        await q("select confirmar_devolucion($1)", [devolucion]);
+        assert.equal(
+          Number(
+            await uno("select devuelto from vw_estados_rifa where id_rifa=$1", [
+              id,
+            ]),
+          ),
+          20,
+        );
+        await assert.rejects(q("select anular_rifa($1,'Terminada')", [r]));
       },
     );
     await t.test("RLS y privilegios", async () => {

@@ -1,3 +1,9 @@
+import {
+  ResumenCompra,
+  CancelarNumeros,
+  type Oferta,
+  type Cotizacion,
+} from "./ofertas";
 import { ResumenPagos, FormularioAbono } from "./pagos";
 import { Ayuda } from "./ayuda";
 import { useEffect, useState } from "react";
@@ -52,7 +58,7 @@ export function Operaciones({
       filas<Fila>("detalle_reserva", undefined, "id_detalle_reserva"),
       filas<Fila>("vw_pagos_pendientes", f, "id_venta"),
       filas<Fila>("devolucion", undefined, "id_devolucion"),
-      filas<Fila>("pago", undefined, "id_pago"),
+      filas<Fila>("vw_pagos_historicos", undefined, "id_pago"),
       filas<Fila>("vw_boletos_rifa", f, "id_boleto"),
       filas<Fila>("vw_detalle_ventas", f, "id_detalle_venta"),
     ])
@@ -76,6 +82,40 @@ export function Operaciones({
       vivo = false;
     };
   }, [r.id_rifa, version]);
+  const [ofertas, ponerOfertas] = useState<Oferta[]>([]),
+    [precio, precioVenta] = useState<{ clave: string; valor: Cotizacion }>();
+  const clavePrecio = [r.id_rifa, version, sel.length].join(":");
+  useEffect(() => {
+    let vivo = true;
+    filas<Oferta>("oferta_rifa", ["id_rifa", r.id_rifa], "cantidad")
+      .then((os) => {
+        if (vivo) ponerOfertas(os.filter((o) => o.activa));
+      })
+      .catch((e) => {
+        if (vivo) error(e.message);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [r.id_rifa, version]);
+  useEffect(() => {
+    let vivo = true;
+    if (sel.length)
+      rpc<Cotizacion>("cotizar_compra", {
+        p_rifa: r.id_rifa,
+        p_cantidad: sel.length,
+      })
+        .then((v) => {
+          if (vivo) precioVenta({ clave: clavePrecio, valor: v });
+        })
+        .catch((e) => {
+          if (vivo) error(e.message);
+        });
+    return () => {
+      vivo = false;
+    };
+  }, [clavePrecio, sel.length, r.id_rifa]);
+  const cotizacion = precio?.clave === clavePrecio ? precio.valor : undefined;
   const abiertos = r.estado === "activa",
     nombreDe = (id: unknown) => {
       const p = ps.find((p) => p.id_persona === id);
@@ -145,9 +185,15 @@ export function Operaciones({
       {abiertos && (
         <section>
           <h3>Asignar números</h3>
-          <p>
-            {sel.length} seleccionados · {soles(r.precio_numero * sel.length)}
-          </p>
+          <ResumenCompra
+            base={r.precio_numero}
+            cantidad={sel.length}
+            seleccion={ns
+              .filter((n) => sel.includes(n.id_numero_rifa))
+              .map((n) => n.numero)}
+            ofertas={ofertas}
+            cotizacion={cotizacion}
+          />
           {sel.length > 0 && (
             <SeleccionPersona
               personas={ps}
@@ -161,6 +207,7 @@ export function Operaciones({
           )}
           {sel.length > 0 && comprador && (
             <Formulario
+              deshabilitado={modo === "venta" && !cotizacion}
               accion={modo === "venta" ? "Registrar venta" : "Reservar"}
               guardar={async (f) => {
                 if (!sel.length) throw Error("Selecciona al menos un número.");
@@ -170,9 +217,11 @@ export function Operaciones({
                   p_numeros: sel,
                 };
                 await ejecutar(
-                  modo === "venta" ? "registrar_venta" : "reservar_numeros",
                   modo === "venta"
-                    ? args
+                    ? "registrar_venta_cotizada"
+                    : "reservar_numeros",
+                  modo === "venta"
+                    ? { ...args, p_total: cotizacion?.total }
                     : {
                         ...args,
                         p_vencimiento: new Date(
@@ -255,14 +304,24 @@ export function Operaciones({
                 )}
                 <Accion
                   texto="Convertir en venta"
-                  ejecutar={() =>
-                    ejecutar("registrar_venta", {
+                  ejecutar={async () => {
+                    const c = await rpc<Cotizacion>("cotizar_reserva", {
+                      p_reserva: b.id_reserva,
+                    });
+                    if (
+                      !confirm(
+                        "Convertir la reserva por " + soles(c.total) + "?",
+                      )
+                    )
+                      throw Error("Reserva conservada.");
+                    await ejecutar("registrar_venta_cotizada", {
+                      p_total: c.total,
                       p_rifa: r.id_rifa,
                       p_persona: b.id_persona,
                       p_numeros: numeros,
                       p_reserva: b.id_reserva,
-                    })
-                  }
+                    });
+                  }}
                 />
                 <Accion
                   texto="Liberar"
@@ -290,17 +349,27 @@ export function Operaciones({
           );
 
         const numerosVenta = lineas
-          .filter((l) => l.id_venta === v.id_venta)
+          .filter(
+            (l) =>
+              l.id_venta === v.id_venta && l.estado_detalle !== "cancelado",
+          )
           .map((l) => "N.º " + numero(Number(l.numero)));
         const identidad = [numerosVenta.join(", "), nombreDe(v.id_persona)]
           .filter(Boolean)
           .join(" · ");
         const emitidos = boletos.filter((t) => t.id_venta === v.id_venta);
-        const cobrado =
+        const devVenta = dev.filter((d) =>
+          movimientos.some((p) => p.id_pago === d.id_pago),
+        );
+        const bruto =
           movimientos.reduce(
             (s, p) => s + Math.round(Number(p.importe) * 100),
             0,
           ) / 100;
+        const cobrado =
+          v.estado === "cancelada"
+            ? bruto
+            : bruto - devVenta.reduce((a, d) => a + Number(d.importe), 0);
         const pendiente = pend.find((p) => p.id_venta === v.id_venta);
         const saldo = pendiente ? Number(pendiente.saldo) : null;
         return (
@@ -371,6 +440,17 @@ export function Operaciones({
                   }
                 />
               )}
+            {abiertos && v.estado !== "cancelada" && (
+              <CancelarNumeros
+                venta={String(v.id_venta)}
+                lineas={lineas.filter(
+                  (l) =>
+                    l.id_venta === v.id_venta &&
+                    l.estado_detalle !== "cancelado",
+                )}
+                recargar={recargar}
+              />
+            )}
             {abiertos && v.estado !== "cancelada" && (
               <Formulario
                 accion="Cancelar venta"

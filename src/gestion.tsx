@@ -1,3 +1,4 @@
+import { EditorOfertas, AnularRifa, type Oferta } from "./ofertas";
 import { ResumenPagos, type DatosResumen } from "./pagos";
 import { Ayuda } from "./ayuda";
 import { useEffect, useId, useState } from "react";
@@ -17,7 +18,6 @@ import {
   type Premio,
   type Fila,
   type Numero,
-  type Boleto,
 } from "./datos";
 import { Operaciones } from "./operaciones";
 import { Boletos } from "./boletos";
@@ -29,12 +29,37 @@ export function EditarRifa({
   r?: Rifa;
   alGuardar: (id: string) => void;
 }) {
+  const [ofertas, cambiar] = useState<Oferta[]>([]),
+    [base, precio] = useState(r?.precio_numero ?? 0),
+    [listas, listo] = useState(!r),
+    [error, avisar] = useState("");
+  useEffect(() => {
+    if (!r) return;
+    let vivo = true;
+    listo(false);
+    filas<Oferta>("oferta_rifa", ["id_rifa", r.id_rifa], "cantidad")
+      .then((o) => {
+        if (vivo) {
+          cambiar(o);
+          listo(true);
+        }
+      })
+      .catch((e) => {
+        if (vivo) avisar(e.message);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [r]);
   return (
     <section>
+      {error && <p role="alert">{error}</p>}
       <Formulario
+        deshabilitado={!listas}
         guardar={async (f) =>
           alGuardar(
-            await rpc<string>("guardar_rifa", {
+            await rpc<string>("guardar_rifa_ofertas", {
+              p_ofertas: ofertas,
               p_nombre: campo(f, "nombre"),
               p_descripcion: campo(f, "descripcion"),
               p_precio: Number(f.get("precio")),
@@ -59,7 +84,8 @@ export function EditarRifa({
             type="number"
             min=".01"
             step=".01"
-            defaultValue={r?.precio_numero}
+            value={base || ""}
+            onChange={(e) => precio(Number(e.target.value))}
             required
           />
         </Campo>
@@ -101,6 +127,7 @@ export function EditarRifa({
             accept="image/png,image/webp,image/jpeg"
           />
         </Campo>
+        <EditorOfertas lista={ofertas} cambiar={cambiar} base={base} />
       </Formulario>
     </section>
   );
@@ -261,6 +288,11 @@ export function PanelRifa({
     <>
       <p className="ceja">{r.estado.toUpperCase().replace("_", " ")}</p>
       <h1>{r.nombre}</h1>
+      {r.token_consulta && (
+        <a href={"/rifa/" + r.token_consulta} target="_blank" rel="noreferrer">
+          Abrir página pública de la rifa
+        </a>
+      )}
       <p>
         {fecha(r.fecha_sorteo)} · {soles(r.precio_numero)} por número
       </p>
@@ -285,6 +317,15 @@ export function PanelRifa({
         ))}
       </div>
       {err && <p role="alert">{err}</p>}
+      {tab === "Configuración" &&
+        ["activa", "en_sorteo"].includes(r.estado) && (
+          <AnularRifa
+            id={r.id_rifa}
+            nombre={r.nombre}
+            enSorteo={r.estado === "en_sorteo"}
+            recargar={recargar}
+          />
+        )}
       {tab === "Configuración" ? (
         r.estado === "activa" ? (
           <>
@@ -302,7 +343,11 @@ export function PanelRifa({
             />
           </>
         ) : (
-          <p>La configuración quedó fijada al iniciar el sorteo.</p>
+          <p>
+            {r.estado === "anulada"
+              ? "La rifa fue anulada. Puedes gestionar las devoluciones desde Números y ventas."
+              : "La configuración quedó fijada al iniciar el sorteo."}
+          </p>
         )
       ) : tab === "Premios" ? (
         <>
@@ -443,13 +488,19 @@ export function Participantes({
       const cuentas: DatosResumen[] = [];
       for (const venta of new Set(ventas.map((v) => String(v.id_venta)))) {
         const lineas = ventas.filter((v) => v.id_venta === venta);
-        const pagos = await filas<Fila>("pago", ["id_venta", venta], "id_pago");
+        const pagos = await filas<Fila>(
+          "vw_pagos_historicos",
+          ["id_venta", venta],
+          "id_pago",
+        );
+        const neto = await rpc<number>("cobro_vigente", { p_venta: venta });
         cuentas.push({
           cantidad: lineas.length,
           total: Number(lineas[0].total),
           cobrado:
-            pagos.reduce((s, p) => s + Math.round(Number(p.importe) * 100), 0) /
-            100,
+            lineas[0].estado === "cancelada"
+              ? pagos.reduce((a, p) => a + Number(p.importe), 0)
+              : Number(neto),
           cancelada: lineas[0].estado === "cancelada",
           identidad: [
             mostrar(lineas[0].id_rifa),
@@ -459,19 +510,19 @@ export function Participantes({
           movimientos: pagos,
         });
       }
-      const boletos = await filas<
-        Boleto & { id_rifa: string; id_reserva: string | null }
-      >("vw_boletos_rifa", ["id_persona", id], "id_boleto");
+      const boletos = await filas<{
+        id_rifa: string;
+        token_grupo: string;
+        estado: string;
+        numeros: number[];
+      }>("vw_comprobantes", ["id_persona", id], "token_grupo");
       boletos.forEach((b) =>
         textos.push(
           mostrar(b.id_rifa) +
-            " · Boleto " +
-            numero(b.datos_emision_historicos.numero) +
-            " · " +
+            " · Boleto agrupado " +
             b.estado +
-            (b.id_reserva ? " · Reserva sin pago" : "") +
             " · " +
-            b.token_publico,
+            b.numeros.map(numero).join(", "),
         ),
       );
       resultados.forEach((p) =>

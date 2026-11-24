@@ -1,6 +1,6 @@
 # RifaPes 1.0
 
-Aplicación privada para hasta dos administradoras, cada una con sus propias rifas. Cada rifa tiene participantes, premios, reservas, ventas en soles, pagos manuales y un sorteo oficial. Cada número pagado recibe un boleto individual. La consulta pública funciona en `/boleto/:token`.
+Aplicación privada para hasta dos administradoras, cada una con sus propias rifas. Cada rifa tiene participantes, premios, reservas, ventas en soles, pagos manuales y un sorteo oficial. Cada número conserva su registro individual y cada participante recibe un comprobante agrupado por rifa. La consulta pública funciona en `/boleto/:token`.
 
 ## 1. Preparar Supabase
 
@@ -17,17 +17,15 @@ En **SQL Editor → New query**, pega y ejecuta **un archivo completo a la vez**
 | 5 | `20261123000500_limite_consultas.sql` | Límite de consultas públicas |
 | 6 | `20261123000600_eliminar_borrador.sql` | Eliminación de rifas sin movimientos |
 | 7 | `20261123000700_plantilla_vigente.sql` | Aplicar la plantilla actual en la consulta pública de boletos ya emitidos |
-
 | 8 | `20261123000800_premios_destacados.sql` | Premios destacados y datos vigentes al consultar el boleto |
-
 | 9 | 20261123000900_fotos_boleto.sql | Fotos opcionales de premios |
 | 10 | 20261123001000_eliminar_persona.sql | Eliminar participantes sin historial de ventas o reservas |
-
 | 11 | 20261123001100_dos_administradoras.sql | Segunda administradora y auditoría por propietaria |
- 
 | 12 | 20261123001200_emision_y_premios.sql | Emisión desde reservas o ventas, prioridades sin tope, responsable de abonos y puestos |
+| 13 | 20261124000100_grupos_ofertas_anulacion.sql | Comprobantes agrupados, ofertas por operación, ajustes y anulación con devolución |
+| 14 | 20261124000200_plataforma_meet.sql | Google Meet y modalidad en la consulta pública |
 
-Si ya aplicaste la migración 11, ejecuta únicamente la 12. Si terminaste en la 10, aplica la 11 y después la 12. En las rifas anteriores se seleccionan inicialmente hasta cinco premios según el orden del sorteo. En rifas activas puedes cambiar esa selección desde **Premios**. Al mover un destacado a una prioridad ocupada, ambos intercambian sus posiciones en el boleto.
+Si ya aplicaste la migración 13, ejecuta solamente la 14. En instalaciones anteriores aplica las pendientes en orden. En las rifas anteriores se seleccionan inicialmente hasta cinco premios según el orden del sorteo. En rifas activas puedes cambiar esa selección desde **Premios**. Al mover un destacado a una prioridad ocupada, ambos intercambian sus posiciones en el boleto.
 
 Para WhatsApp abre un boleto, personaliza el mensaje y prepara la imagen. El selector del dispositivo permite elegir WhatsApp si admite archivos. También puedes descargar el PNG y adjuntarlo al mensaje preparado.
 
@@ -130,3 +128,12 @@ En Boletos selecciona el boleto emitido y abre **Compartir por WhatsApp**. El si
 En Android, iOS y escritorio, la opción nativa aparece si el navegador admite compartir ese archivo y el texto por HTTPS. El dispositivo determina las aplicaciones disponibles y la aplicación receptora puede descartar parte del texto. El chat directo funciona en WhatsApp Web o en la aplicación asociada por el dispositivo. [Ayuda de WhatsApp](https://faq.whatsapp.com/5913398998672934) · [Web Share API](https://www.w3.org/TR/web-share/)
 
 Un envío automático de imagen y mensaje al número del cliente requeriría una integración de servidor con WhatsApp Business Platform, cuenta empresarial de WhatsApp, número emisor registrado, identificador de número y token con permiso whatsapp_business_messaging. Requiere consentimiento, y fuera de la ventana de atención de 24 horas se necesitan plantillas aprobadas. Pueden aplicarse cargos según mercado y categoría. Para confirmar entrega se necesitan notificaciones de estado. La aplicación actual usa las opciones del navegador. [Documentación empresarial de Meta](https://developers.facebook.com/documentation/business-messaging/whatsapp/overview)
+
+### Probar y publicar la versión agrupada
+
+1. Usa Supabase local o un proyecto de pruebas que tenga las migraciones 1–12 y la función consultar-boleto. En el editor SQL de ese entorno aplica las migraciones 13 y 14 en orden. Con Supabase CLI y una instancia local ya inicializada, usa `supabase migration up --local`.
+2. Configura la URL y la clave pública **de pruebas** en .env.local. Ejecuta `npm ci` y `npm run dev`. Un frontend en localhost opera sobre el proyecto al que apuntan estas variables.
+3. Configura una rifa a S/ 10 con tres números por S/ 25, vende tres y cobra S/ 15. Verifica saldo S/ 10, compra posterior separada, descarga agrupada y consulta pública. Revisa la anulación y confirma una devolución desde Números y ventas.
+4. Tras aprobar las pruebas, conserva un respaldo y aplica las migraciones pendientes hasta la 14 a producción antes de publicar el frontend en Netlify. Mantén la función consultar-boleto y su configuración de origen. Publica desde la rama conectada al sitio y comprueba una URL antigua, una agrupada y el ZIP.
+
+Los QR antiguos conservan su ruta y validación individual. El nuevo QR identifica a la pareja rifa–participante. Los números de ventas adicionales se actualizan en la consulta y en la siguiente descarga; los archivos ya guardados son copias de la fecha de descarga.

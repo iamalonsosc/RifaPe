@@ -89,6 +89,7 @@ export function ResumenPagos({
       </span>
       <h4>Historial de pagos</h4>
       {historial.map(({ p, abonado }) => {
+        const totalHistorico = Number(p.total_historico ?? total);
         const metodo = medios[String(p.medio_pago)] ?? "Otro";
         return (
           <article className="movimiento" key={String(p.id_pago)}>
@@ -97,9 +98,9 @@ export function ResumenPagos({
             </span>
             <div>
               <strong>
-                {abonado < total
+                {abonado < totalHistorico
                   ? "Abono parcial"
-                  : Number(p.importe) === total
+                  : Number(p.importe) === totalHistorico
                     ? "Pago completo"
                     : "Pago de saldo pendiente"}
               </strong>
@@ -110,7 +111,9 @@ export function ResumenPagos({
             <div className="importes">
               <strong>+ {soles(Number(p.importe))}</strong>
               <small>Acumulado {soles(abonado)}</small>
-              <small>Saldo {soles(total - abonado)}</small>
+              <small>
+                Saldo {soles(Math.max(0, totalHistorico - abonado))}
+              </small>
             </div>
           </article>
         );

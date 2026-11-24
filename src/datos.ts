@@ -4,6 +4,7 @@ const url = import.meta.env.VITE_SUPABASE_URL,
 export const db = url && clave ? createClient(url, clave) : null;
 export type Fila = { [campo: string]: string | number | boolean | null };
 export interface Rifa {
+  token_consulta?: string;
   id_rifa: string;
   nombre: string;
   descripcion: string | null;
@@ -46,6 +47,10 @@ export interface Visual {
   fondo_url: string | null;
 }
 export interface Ticket {
+  numeros?: number[];
+  codigo_grupo?: string;
+  estado_rifa?: string;
+  estados_numeros?: { numero: number; estado_numero: string }[];
   participante: string;
   numero: number;
   rifa: string;
@@ -60,6 +65,7 @@ export interface Ticket {
   estado: string;
   codigo: string;
   direccion?: string;
+  modalidad?: string;
   destino?: string;
 }
 export interface Boleto {

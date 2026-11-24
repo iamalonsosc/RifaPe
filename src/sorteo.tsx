@@ -154,8 +154,10 @@ export function Sorteo({
               />
             )}
           </>
-        ) : r.estado === "terminada" ? (
-          <h2>Sorteo terminado</h2>
+        ) : ["anulada", "terminada"].includes(r.estado) ? (
+          <h2>
+            {r.estado === "anulada" ? "Rifa anulada" : "Sorteo terminado"}
+          </h2>
         ) : listo && p ? (
           <>
             <h2>{p.es_sorpresa && !ganador ? "Premio sorpresa" : p.nombre}</h2>

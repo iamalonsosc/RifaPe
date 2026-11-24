@@ -1,3 +1,6 @@
+import { PlataformaBoleto, plataformaDe, nombresPlataforma } from "./plataformas";
+import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
 import {
   useEffect,
   useLayoutEffect,
@@ -13,11 +16,11 @@ import {
   filas,
   rpc,
   type Persona,
+  soles,
   type Premio,
   numero,
   imagen,
   type Ticket,
-  type Boleto,
   type Rifa,
   type Fila,
   type Visual,
@@ -108,7 +111,10 @@ function VistaEscalada({
 }
 function PremiosBoleto({ b }: { b: Ticket }) {
   const caja = useRef<HTMLDivElement>(null);
-  const [cantidad, limitar] = useState(0);
+  const [posiciones, distribuir] = useState<
+    { columna: number; arriba: number }[]
+  >([]);
+  const cantidad = posiciones.length;
   useLayoutEffect(() => {
     const root = caja.current!;
     const lista = root.querySelector("ol")!;
@@ -117,19 +123,47 @@ function PremiosBoleto({ b }: { b: Ticket }) {
       const filas = Array.from(lista.children) as HTMLElement[];
       const margen = parseFloat(getComputedStyle(lista).rowGap) || 0;
       const libre = root.clientHeight - lista.offsetTop;
-      const alturas = filas.map((f) => f.offsetHeight);
-      const total = alturas.reduce((s, h, i) => s + h + (i ? margen : 0), 0);
-      const limite =
-        libre -
-        (b.mas_premios || total > libre ? aviso.offsetHeight + margen : 0);
-      let usados = 0,
-        visibles = 0;
-      for (const alto of alturas) {
-        usados += alto + (visibles ? margen : 0);
-        if (usados > limite) break;
-        visibles++;
+      function ubicar(alto: number) {
+        let columna = 0,
+          arriba = 0;
+        const posiciones = [];
+        for (const fila of filas) {
+          if (arriba + fila.offsetHeight > alto) {
+            columna++;
+            arriba = 0;
+          }
+          if (columna > 1 || fila.offsetHeight > alto) break;
+          posiciones.push({ columna, arriba });
+          arriba += fila.offsetHeight + margen;
+        }
+        const alturas = filas.slice(0, posiciones.length).map(fila => fila.offsetHeight);
+        const total = alturas.reduce((suma, altura) => suma + altura + margen, 0);
+        let izquierda = 0;
+        let diferencia = Infinity;
+        let corte = alturas.length;
+        for (let i = 1; i < alturas.length; i++) {
+          izquierda += alturas[i - 1] + margen;
+          const derecha = total - izquierda;
+          const distancia = Math.abs(izquierda - derecha);
+          if (Math.max(izquierda, derecha) - margen <= alto && distancia < diferencia) {
+            corte = i;
+            diferencia = distancia;
+          }
+        }
+        arriba = 0;
+        return alturas.map((altura, i) => {
+          if (i === corte) arriba = 0;
+          const posicion = { columna: i < corte ? 0 : 1, arriba };
+          arriba += altura + margen;
+          return posicion;
+        });
       }
-      limitar(visibles);
+      const todas = ubicar(libre);
+      distribuir(
+        b.mas_premios || todas.length < filas.length
+          ? ubicar(libre - aviso.offsetHeight - margen)
+          : todas,
+      );
     }
     medir();
     const obs = new ResizeObserver(medir);
@@ -146,7 +180,11 @@ function PremiosBoleto({ b }: { b: Ticket }) {
         {premios.map((nombre, i) => (
           <li
             key={i}
-            style={{ visibility: i < cantidad ? "visible" : "hidden" }}
+            style={{
+              visibility: i < cantidad ? "visible" : "hidden",
+              left: posiciones[i]?.columna ? "calc(50% + 5px)" : 0,
+              top: posiciones[i]?.arriba ?? 0,
+            }}
           >
             {b.plantilla.mostrar_fotos_premios !== false &&
               (b.fotos_destacadas?.[i] || nombre === "Premio sorpresa") &&
@@ -176,20 +214,30 @@ function PremiosBoleto({ b }: { b: Ticket }) {
     </div>
   );
 }
-function Tarjeta({ b, muestra = false }: { b: Ticket; muestra?: boolean }) {
+function Tarjeta({
+  b,
+  muestra = false,
+  qrInicial = "",
+}: {
+  b: Ticket;
+  muestra?: boolean;
+  qrInicial?: string;
+}) {
   const ref = useRef<HTMLDivElement>(null),
-    [qr, setQr] = useState("");
-  const url = location.origin + "/boleto/" + b.codigo;
+    [qr, setQr] = useState(qrInicial);
+  const url = location.origin + "/boleto/" + (b.codigo_grupo ?? b.codigo);
+  const numeros = b.numeros ?? [b.numero];
   useEffect(() => {
+    if (qrInicial || b.estado === "anulado") return;
     let vivo = true;
     setQr("");
-    QRCode.toDataURL(url, { margin: 2, width: 160 }).then((q) => {
+    QRCode.toDataURL(url, { margin: 4, width: 384 }).then((q) => {
       if (vivo) setQr(q);
     });
     return () => {
       vivo = false;
     };
-  }, [url]);
+  }, [url, qrInicial, b.estado]);
   async function generarPNG() {
     await document.fonts.ready;
     if (!ref.current || (b.plantilla.mostrar_qr && !qr))
@@ -224,8 +272,10 @@ function Tarjeta({ b, muestra = false }: { b: Ticket; muestra?: boolean }) {
   if (b.estado === "anulado")
     return (
       <section>
-        <h2>Boleto anulado</h2>
-        <p>Este número dejó de estar asignado a esta venta.</p>
+        <h2>
+          {b.estado_rifa === "anulada" ? "Rifa anulada" : "Boleto anulado"}
+        </h2>
+        <p>Este comprobante ya no es válido.</p>
       </section>
     );
   return (
@@ -251,7 +301,7 @@ function Tarjeta({ b, muestra = false }: { b: Ticket; muestra?: boolean }) {
                 <small>RifaPes</small>
                 <h3>{b.plantilla.titulo}</h3>
                 <h2>{b.rifa}</h2>
-                <p>{fechaBoleto.format(new Date(b.fecha))} · Perú</p>
+                <p>{fechaBoleto.format(new Date(b.fecha))}</p>
               </div>
               {b.imagen && (
                 <img
@@ -263,32 +313,51 @@ function Tarjeta({ b, muestra = false }: { b: Ticket; muestra?: boolean }) {
               )}
             </div>
             <div className="numero-boleto">
-              <small>Número</small>
-              <strong>{numero(b.numero)}</strong>
+              <small>Tus números</small>
+              <div
+                className="numeros-agrupados"
+                style={{
+                  gridTemplateColumns:
+                    "repeat(" +
+                    Math.min(
+                      numeros.length,
+                      numeros.length <= 12 ? 5 : 7,
+                    ) +
+                    ", minmax(0,1fr))",
+                  fontSize:
+                    numeros.length === 1
+                      ? 58
+                      : numeros.length < 4
+                        ? 36
+                        : numeros.length < 13
+                          ? 28
+                          : 19,
+                }}
+              >
+                {numeros.map((n) => (
+                  <b key={n}>{numero(n)}</b>
+                ))}
+              </div>
+              {numeros.length > 1 && <small>{numeros.length} números</small>}
             </div>
-            <h3>{b.participante}</h3>
+            <div className="datos-titular-boleto">
+              <h3>{b.participante}</h3>
             {b.telefono && <p>{b.telefono}</p>}
             {b.plantilla.mostrar_lugar && b.direccion && <p>{b.direccion}</p>}
-            <small className="codigo-boleto">{b.codigo}</small>
-          </div>
-          <div className="talon-boleto">
-            {b.plantilla.mostrar_premio && <PremiosBoleto b={b} />}
-            <div className="pie-transmision">
-              {b.plantilla.mostrar_qr && qr && (
+              {b.plantilla.mostrar_lugar && <PlataformaBoleto b={b} />}
+            </div>
+            {b.plantilla.mostrar_qr && qr && (
                 <img
                   className="qr-boleto"
                   src={qr}
                   alt="QR de consulta del boleto"
                 />
               )}
-              {b.plantilla.mostrar_lugar &&
-                b.destino?.startsWith("https://") && (
-                  <a href={b.destino} target="_blank" rel="noreferrer">
-                    {b.destino}
-                  </a>
-                )}
-            </div>
           </div>
+          <div className="talon-boleto">
+            {b.plantilla.mostrar_premio && <PremiosBoleto b={b} />}
+          </div>
+
         </div>
       </VistaEscalada>
       {!muestra && (
@@ -338,9 +407,10 @@ function CompartirIndividual({
     "Hola, " + b.participante + ". Tu boleto ha sido emitido.",
     "Rifa: " + b.rifa,
     "Participante: " + b.participante,
-    "Número de boleto: " + numero(b.numero),
+    "Números: " + (b.numeros ?? [b.numero]).map(numero).join(", "),
     "Fecha del sorteo: " + fechaBoleto.format(new Date(b.fecha)),
     url,
+    ...(plataformaDe(b) ? ["Transmisión: " + b.destino] : []),
   ].join("\n");
   const compatible =
     foto &&
@@ -449,6 +519,7 @@ function EditorPlantilla({
   premios,
   rifa,
   destino,
+  modalidad,
   direccion,
   recargar,
 }: {
@@ -456,6 +527,7 @@ function EditorPlantilla({
   premios: Premio[];
   rifa: Rifa;
   destino?: string;
+  modalidad?: string;
   direccion?: string;
   recargar: () => void;
 }) {
@@ -604,6 +676,7 @@ function EditorPlantilla({
 
             plantilla: visual,
             destino,
+            modalidad,
             direccion,
           }}
         />
@@ -611,104 +684,73 @@ function EditorPlantilla({
     </div>
   );
 }
-type BoletoComprador = Boleto & { id_persona: string };
-
-function FotoConjunta({
-  boletos,
-  destino,
-  direccion,
-}: {
-  boletos: Boleto[];
-  destino?: string;
-  direccion?: string;
-}) {
-  const zona = useRef<HTMLDivElement>(null);
-  const [foto, guardar] = useState<File>();
-  const [enlace, url] = useState("");
-  useEffect(() => {
-    if (!foto) return;
-    const objeto = URL.createObjectURL(foto);
-    url(objeto);
-    return () => URL.revokeObjectURL(objeto);
-  }, [foto]);
-  async function preparar() {
-    const elemento = zona.current;
-    if (!elemento) return;
+type Comprobante = {
+  id_persona: string;
+  token_grupo: string;
+  estado: string;
+  estado_rifa: string;
+  numeros: number[];
+  datos_emision_historicos: Ticket;
+};
+async function descargarLote(boletos: Ticket[]) {
+  const [{ zipSync }, { toBlob }] = await Promise.all([
+    import("fflate"),
+    import("html-to-image"),
+  ]);
+  const archivos: Record<string, Uint8Array> = {};
+  const zona = document.createElement("div");
+  zona.style.cssText = "position:fixed;left:-10000px;width:900px;top:0";
+  document.body.append(zona);
+  const root = createRoot(zona);
+  try {
     await document.fonts.ready;
-    const imagenes = Array.from(elemento.querySelectorAll("img"));
-    if (
-      elemento.querySelectorAll(".qr-boleto").length !==
-      boletos.filter((b) => b.datos_emision_historicos.plantilla.mostrar_qr)
-        .length
-    )
-      throw Error("Espera a que carguen los códigos QR y vuelve a intentarlo.");
-    await Promise.all(imagenes.map((i) => i.decode()));
-    const { toBlob } = await import("html-to-image");
-    const png = await toBlob(elemento, {
-      pixelRatio: 2,
-      backgroundColor: "#ffffff",
-    });
-    if (!png)
-      throw Error("No se pudo crear la foto. Prueba con menos boletos.");
-    guardar(
-      new File(
-        [png],
-        "Boletos-" +
-          boletos
-            .map((b) => numero(b.datos_emision_historicos.numero))
-            .join("-")
-            .slice(0, 150) +
-          ".png",
-        { type: "image/png" },
-      ),
+    for (const b of boletos) {
+      const qr = await QRCode.toDataURL(
+        location.origin + "/boleto/" + b.codigo,
+        { margin: 4, width: 384 },
+      );
+      flushSync(() =>
+        root.render(<Tarjeta key={b.codigo} b={b} muestra qrInicial={qr} />),
+      );
+      const el = zona.querySelector<HTMLElement>(".boleto")!;
+      await Promise.all([...el.querySelectorAll("img")].map((i) => i.decode()));
+      await new Promise<void>((ok) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => ok())),
+      );
+      const png = await toBlob(el, { pixelRatio: 2 });
+      if (!png) throw Error("No se pudo generar el boleto.");
+      archivos["Boleto-" + b.codigo + ".png"] = new Uint8Array(
+        await png.arrayBuffer(),
+      );
+    }
+    const contenido = zipSync(archivos, { level: 0 });
+    const url = URL.createObjectURL(
+      new Blob([new Uint8Array(contenido)], { type: "application/zip" }),
     );
+    const enlace = document.createElement("a");
+    enlace.href = url;
+    enlace.download = "Boletos-RifaPes.zip";
+    enlace.click();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } finally {
+    root.unmount();
+    zona.remove();
   }
-  return (
-    <section>
-      <h3>Foto conjunta · {boletos.length} boletos</h3>
-      <VistaEscalada ancho={916}>
-        <div
-          className="lote-boletos"
-          ref={zona}
-          style={{ width: 916, background: "#fff", padding: 8 }}
-        >
-          {boletos.map((b) => (
-            <Tarjeta
-              muestra
-              key={b.token_publico}
-              b={{
-                ...b.datos_emision_historicos,
-                codigo: b.token_publico,
-                estado: b.estado,
-                destino,
-                direccion,
-              }}
-            />
-          ))}
-        </div>
-      </VistaEscalada>
-      {!foto ? (
-        <Accion texto="Preparar foto conjunta" ejecutar={preparar} />
-      ) : (
-        <div className="acciones">
-          {navigator.canShare?.({ files: [foto] }) && (
-            <Accion
-              texto="Compartir foto"
-              ejecutar={() => navigator.share({ files: [foto] })}
-            />
-          )}
-          {enlace && (
-            <a href={enlace} download={foto.name}>
-              Descargar foto para WhatsApp
-            </a>
-          )}
-        </div>
-      )}
-    </section>
-  );
 }
-
-export function Publico({ token }: { token: string }) {
+export function Publico({
+  token,
+  esRifa = false,
+}: {
+  token: string;
+  esRifa?: boolean;
+}) {
+  const [publicada, verRifa] = useState<{
+    nombre: string;
+    estado: string;
+    fecha: string;
+    precio: number;
+    ofertas: { cantidad: number; precio: number }[];
+  }>();
   const [b, set] = useState<Ticket | null>(null),
     [msg, aviso] = useState("Consultando boleto…");
   useEffect(() => {
@@ -741,18 +783,60 @@ export function Publico({ token }: { token: string }) {
                 : "No se pudo conectar con la consulta pública. Comprueba tu conexión o contacta con la organización.",
         );
       }
-      if (vivo) set(data);
+      if (!vivo) return;
+      if (esRifa && data?.tipo === "rifa") verRifa(data);
+      else if (!esRifa && data && data.tipo !== "rifa") set(data);
+      else throw Error("Enlace no encontrado.");
     }
     void consultar().catch((e) => aviso(e.message));
     return () => {
       vivo = false;
     };
-  }, [token]);
+  }, [token, esRifa]);
   return (
     <main className="publico">
       <p className="ceja">RifaPes</p>
-      <h1>Consulta de boleto</h1>
-      {b ? <Tarjeta b={b} /> : <p role="status">{msg}</p>}
+      <h1>
+        {esRifa
+          ? (publicada?.nombre ?? "Consulta de rifa")
+          : "Consulta de boleto"}
+      </h1>
+      {publicada && (
+        <>
+          <h2>Rifa {publicada.estado.replace("_", " ")}</h2>
+          <p>{fechaBoleto.format(new Date(publicada.fecha))}</p>
+          {publicada.estado === "activa" && (
+            <>
+              <p>Precio por número {soles(publicada.precio)}</p>
+              {publicada.ofertas.map((o) => (
+                <p key={o.cantidad}>
+                  {o.cantidad} números por {soles(o.precio)}
+                </p>
+              ))}
+            </>
+          )}
+        </>
+      )}
+      {b ? (
+        <>
+          <Tarjeta b={b} />
+          {b.estado === "emitido" && b.estado_rifa && (
+            <p>
+              Boleto vigente · Rifa {b.estado_rifa.replace("_", " ")}
+              {b.estados_numeros?.some(
+                (n) => n.estado_numero === "reservado",
+              ) &&
+                " · Reservados: " +
+                  b.estados_numeros
+                    .filter((n) => n.estado_numero === "reservado")
+                    .map((n) => numero(n.numero))
+                    .join(", ")}
+            </p>
+          )}
+        </>
+      ) : (
+        !publicada && <p role="status">{msg}</p>
+      )}
     </main>
   );
 }
@@ -769,8 +853,7 @@ export function Boletos({
 }) {
   const [tpl, plantilla] = useState<Visual>(),
     [c, transmision] = useState<Fila>(),
-    [bs, boletos] = useState<BoletoComprador[]>([]),
-    [extras, marcar] = useState<string[]>([]),
+    [bs, boletos] = useState<Comprobante[]>([]),
     [err, error] = useState(""),
     [seleccion, abrir] = useState(""),
     [modo, modalidad] = useState("");
@@ -781,7 +864,7 @@ export function Boletos({
       const [t, c, b, contactos] = await Promise.all([
         filas<Visual>("plantilla_boleto", f),
         filas<Fila>("configuracion_transmision", f),
-        filas<BoletoComprador>("vw_boletos_rifa", f, "id_boleto"),
+        filas<Comprobante>("vw_comprobantes", f, "token_grupo"),
         filas<Persona>("persona", undefined, "id_persona"),
       ]);
       const telefonos = new Map(
@@ -827,19 +910,22 @@ export function Boletos({
   const destino =
     c?.modalidad === "tiktok" && c.usuario_tiktok
       ? "https://www.tiktok.com/@" + String(c.usuario_tiktok).replace(/^@/, "")
-      : ["teams", "otro"].includes(String(c?.modalidad))
+      : ["teams", "meet", "otro"].includes(String(c?.modalidad))
         ? String(c?.enlace_reunion || "")
         : undefined;
-  const b = bs.find((b) => b.token_publico === seleccion);
-  const relacionados =
-    b?.estado === "emitido"
-      ? bs.filter(
-          (x) => x.id_persona === b.id_persona && x.estado === "emitido",
-        )
-      : [];
-  const grupo = relacionados.filter(
-    (x) => x === b || extras.includes(x.token_publico),
-  );
+  const tickets = bs.map((x) => ({
+    ...x.datos_emision_historicos,
+    codigo: x.token_grupo,
+    numeros: x.numeros,
+    numero: x.numeros[0],
+    estado: x.estado,
+    estado_rifa: x.estado_rifa,
+    modalidad: String(c?.modalidad || ""),
+    destino,
+    direccion:
+      c?.modalidad === "presencial" ? String(c.direccion || "") : undefined,
+  }));
+  const b = tickets.find((b) => b.codigo === seleccion);
   return (
     <>
       {err && <p role="alert">{err}</p>}
@@ -851,6 +937,7 @@ export function Boletos({
             premios={premios}
             inicial={tpl}
             rifa={r}
+            modalidad={String(c?.modalidad || "")}
             destino={destino}
             direccion={
               c?.modalidad === "presencial"
@@ -861,7 +948,7 @@ export function Boletos({
           />
         </details>
       )}
-      {c && (
+      {c && r.estado !== "anulada" && (
         <details>
           <summary>Lugar y transmisión</summary>
           <Formulario
@@ -879,8 +966,8 @@ export function Boletos({
           >
             <Campo titulo="Modalidad">
               <select value={modo} onChange={(e) => modalidad(e.target.value)}>
-                {["presencial", "teams", "tiktok", "otro"].map((s) => (
-                  <option key={s}>{s}</option>
+                {Object.keys(nombresPlataforma).map((s) => (
+                  <option key={s} value={s}>{nombresPlataforma[s]}</option>
                 ))}
               </select>
             </Campo>
@@ -926,85 +1013,31 @@ export function Boletos({
             value={seleccion}
             onChange={(e) => {
               abrir(e.target.value);
-              marcar([]);
             }}
           >
             <option value="">Elegir boleto</option>
-            {bs.map((b) => (
-              <option key={b.token_publico} value={b.token_publico}>
-                {numero(b.datos_emision_historicos.numero)} ·{" "}
-                {b.datos_emision_historicos.participante} · {b.estado}
+            {tickets.map((b) => (
+              <option key={b.codigo} value={b.codigo}>
+                {b.participante} · {b.numeros.length} números · {b.estado}
               </option>
             ))}
           </select>
         </Campo>
       )}
+      {tickets.some((t) => t.estado === "emitido") && (
+        <Accion
+          texto="Descargar boletos agrupados (ZIP)"
+          ejecutar={() =>
+            descargarLote(tickets.filter((t) => t.estado === "emitido"))
+          }
+        />
+      )}
       {b && (
         <>
-          {relacionados.length > 1 && (
-            <section>
-              <h3>
-                Juntar boletos de {b.datos_emision_historicos.participante}
-              </h3>
-              <p>Marca los números que quieres enviar en una sola foto.</p>
-              <div className="acciones">
-                {relacionados.map((x) => (
-                  <label key={x.token_publico}>
-                    <input
-                      type="checkbox"
-                      disabled={x === b}
-                      checked={grupo.includes(x)}
-                      onChange={(e) =>
-                        marcar(
-                          e.target.checked
-                            ? [...extras, x.token_publico]
-                            : extras.filter((id) => id !== x.token_publico),
-                        )
-                      }
-                    />
-                    {numero(x.datos_emision_historicos.numero)}
-                  </label>
-                ))}
-              </div>
-            </section>
-          )}
-          {grupo.length > 1 ? (
-            <FotoConjunta
-              key={
-                JSON.stringify(grupo) +
-                JSON.stringify([tpl, c?.modalidad, c?.direccion, destino])
-              }
-              boletos={grupo}
-              destino={destino}
-              direccion={
-                c?.modalidad === "presencial"
-                  ? String(c.direccion || "")
-                  : undefined
-              }
-            />
-          ) : (
-            <>
-              <Tarjeta
-                b={{
-                  ...b.datos_emision_historicos,
-                  codigo: b.token_publico,
-                  estado: b.estado,
-                  direccion:
-                    c?.modalidad === "presencial"
-                      ? String(c.direccion || "")
-                      : undefined,
-                  destino,
-                }}
-              />
-              <a
-                href={"/boleto/" + b.token_publico}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Abrir consulta pública
-              </a>
-            </>
-          )}
+          <Tarjeta b={b} />
+          <a href={"/boleto/" + b.codigo} target="_blank" rel="noreferrer">
+            Abrir consulta pública
+          </a>
         </>
       )}
     </>
