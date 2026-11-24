@@ -65,6 +65,7 @@ export interface Ticket {
   estado: string;
   codigo: string;
   direccion?: string;
+  enlace_mapa?: string;
   modalidad?: string;
   destino?: string;
 }

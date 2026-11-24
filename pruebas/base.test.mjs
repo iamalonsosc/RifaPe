@@ -103,6 +103,18 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
     const crear = (regla) =>
       uno("select guardar_rifa('Noviembre',10,50,now(),$1)", [regla]);
     const r = await crear("numero");
+    await t.test("Mapa presencial opcional y cambio de modalidad", async () => {
+      const mapa = "https://maps.app.goo.gl/ejemplo";
+      const guardar = "select guardar_transmision($1,'presencial',null,null,'Lima',$2)";
+      await q(guardar, [r, mapa]);
+      const leer = () => uno("select enlace_mapa from configuracion_transmision where id_rifa=$1", [r]);
+      assert.equal(await leer(), mapa);
+      await assert.rejects(q(guardar, [r, "https://maps.app.goo.gl.ejemplo.com/a"]), /Google Maps/);
+      assert.equal(await leer(), mapa);
+      await q("select guardar_transmision($1,'meet',null,'https://meet.google.com/abc',null)", [r]);
+      assert.equal(await leer(), null);
+      await q(guardar, [r, null]);
+    });
     const nums = await q(
       "select id_numero_rifa id,numero from numero_rifa where id_rifa=$1 order by numero",
       [r],

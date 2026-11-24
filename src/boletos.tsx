@@ -389,7 +389,7 @@ function CompartirIndividual({
   url: string;
   generar: () => Promise<string>;
 }) {
-  const [mensaje, editar] = useState("🎟️ ¡Gracias por participar!"),
+  const [mensaje, editar] = useState("🎉 *¡Gracias por participar, " + b.participante + "!*"),
     [foto, preparar] = useState<File>(),
     [imagen, descargar] = useState(""),
     [ocupado, cargar] = useState(false),
@@ -402,16 +402,32 @@ function CompartirIndividual({
     : /^\+(?!51)[1-9]\d{7,14}$/.test(limpio)
       ? limpio.slice(1)
       : "";
+  const numeros = b.numeros ?? [b.numero];
+  const filasNumeros = [];
+  for (let i = 0; i < numeros.length; i += 5) {
+    filasNumeros.push(numeros.slice(i, i + 5).map(numero).join(" · "));
+  }
+  const instante = new Date(b.fecha);
+  const dia = instante.toLocaleDateString("es-PE", {dateStyle: "full", timeZone: "America/Lima"});
+  const hora = instante.toLocaleTimeString("es-PE", {hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "America/Lima"});
+  const plataforma = plataformaDe(b);
+  const presencial = b.modalidad === "presencial" || (!plataforma && !!b.direccion);
   const texto = [
     mensaje,
-    "Hola, " + b.participante + ". Tu boleto ha sido emitido.",
-    "Rifa: " + b.rifa,
-    "Participante: " + b.participante,
-    "Números: " + (b.numeros ?? [b.numero]).map(numero).join(", "),
-    "Fecha del sorteo: " + fechaBoleto.format(new Date(b.fecha)),
-    url,
-    ...(plataformaDe(b) ? ["Transmisión: " + b.destino] : []),
-  ].join("\n");
+    "Tu boleto ha sido emitido correctamente. ¡Ya estás participando en nuestra gran rifa! 🍀",
+    "🎟️ *DETALLES DE TU BOLETO*",
+    ["🏷️ *Rifa:* " + b.rifa, "👤 *Participante:* " + b.participante,
+      "🔢 *Números adquiridos (" + numeros.length + "):*", ...filasNumeros].join("\n"),
+    ["📅 *Fecha:* " + dia[0].toUpperCase() + dia.slice(1), "🕔 *Hora:* " + hora + " (Perú)",
+      presencial ? "📍 *Modalidad:* Presencial" : plataforma ? "📍 *Modalidad:* Virtual · " + plataforma.nombre : ""].filter(Boolean).join("\n"),
+    "📲 *CONSULTA TU BOLETO DIGITAL*\nPuedes visualizar tu boleto en el siguiente enlace:\n" + url,
+    presencial ? ["🎊 *¡ACOMPÁÑANOS EN NUESTRO GRAN SORTEO!*",
+      [b.direccion && "📍 *Lugar:* " + b.direccion, b.enlace_mapa && "🗺️ *Cómo llegar:* " + b.enlace_mapa].filter(Boolean).join("\n"),
+      "¡Te esperamos para compartir este gran momento y conocer a nuestros ganadores!"].filter(Boolean).join("\n\n")
+      : plataforma ? "🔴 *¡ACOMPÁÑANOS EN EL SORTEO EN VIVO!*\nIngresa a la transmisión el día del sorteo:\n" + b.destino : "",
+    "🍀 ¡Mucha suerte y gracias por tu apoyo!",
+    "─────────────────\n🎟️ *RifaPes* | Tu suerte comienza aquí.",
+  ].filter(Boolean).join("\n\n");
   const compatible =
     foto &&
     !!navigator.share &&
@@ -921,6 +937,7 @@ export function Boletos({
     estado: x.estado,
     estado_rifa: x.estado_rifa,
     modalidad: String(c?.modalidad || ""),
+    enlace_mapa: c?.modalidad === "presencial" ? String(c.enlace_mapa || "") : undefined,
     destino,
     direccion:
       c?.modalidad === "presencial" ? String(c.direccion || "") : undefined,
@@ -960,6 +977,7 @@ export function Boletos({
                   modo === "tiktok" ? usuarioTikTok(campo(f, "usuario")) : null,
                 p_enlace: campo(f, "enlace") || null,
                 p_direccion: campo(f, "direccion") || null,
+                p_mapa: campo(f, "mapa") || null,
               });
               recargar();
             }}
@@ -972,12 +990,18 @@ export function Boletos({
               </select>
             </Campo>
             {modo === "presencial" ? (
+              <>
               <Campo titulo="Dirección">
                 <input
                   name="direccion"
                   defaultValue={String(c.direccion || "")}
                 />
               </Campo>
+              <Campo titulo="Enlace de Google Maps (opcional)">
+                <input name="mapa" type="url" placeholder="https://maps.app.goo.gl/…"
+                  defaultValue={String(c.enlace_mapa || "")} />
+              </Campo>
+              </>
             ) : modo === "tiktok" ? (
               <Campo titulo="Usuario o enlace de TikTok">
                 <input

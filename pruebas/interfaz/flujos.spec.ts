@@ -582,12 +582,15 @@ test("Boleto público, QR, destino y descargas PNG/PDF", async ({ page }) => {
     destino,
   );
   const ticket = await page.locator(".boleto").boundingBox();
+  await expect(page.locator(".plataforma-boleto")).toHaveCSS("color", "rgb(255, 255, 255)");
   await expect(page.locator(".datos-titular-boleto").getByRole("link", { name: "Microsoft Teams" })).toHaveAttribute("href", destino);
   await expect(page.locator(".boleto")).not.toContainText(destino);
   await page.getByText("Compartir por WhatsApp", { exact: true }).click();
   const chat = page.getByRole("link", { name: "Abrir WhatsApp" });
   await expect(chat).toBeVisible();
-  expect(new URL((await chat.getAttribute("href"))!).searchParams.get("text")).toContain(destino);
+  const textoVirtual = new URL((await chat.getAttribute("href"))!).searchParams.get("text");
+  expect(textoVirtual).toContain("🎉 *¡Gracias por participar, Alonso!*");
+  expect(textoVirtual).toContain("Ingresa a la transmisión el día del sorteo:\n" + destino);
   expect(ticket!.width).toBeGreaterThan(ticket!.height * 1.5);
   for (const tipo of ["PNG", "PDF"]) {
     const pendiente = page.waitForEvent("download");
@@ -614,6 +617,10 @@ test("Premios por espacio y WhatsApp individual con imagen y mensaje", async ({
       json: {
         codigo: "681ca001-34b7-4256-a390-3cfff5575111",
         rifa: "Rifa de verano",
+        modalidad: "presencial",
+        direccion: "Av. Lima 100",
+        enlace_mapa: "https://maps.app.goo.gl/ejemplo",
+        numeros: [7, 8, 9, 10, 11, 12],
         numero: 7,
         participante: "Alonso",
         estado: "emitido",
@@ -667,6 +674,9 @@ test("Premios por espacio y WhatsApp individual con imagen y mensaje", async ({
   ).searchParams.get("text")!;
   for (const contenido of [
     "Gracias Alonso",
+    "007 · 008 · 009 · 010 · 011\n012",
+    "📍 *Lugar:* Av. Lima 100",
+    "🗺️ *Cómo llegar:* https://maps.app.goo.gl/ejemplo",
     "Rifa de verano",
     "Alonso",
     "007",
