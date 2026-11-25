@@ -1,9 +1,10 @@
 import { EditorOfertas, AnularRifa, type Oferta } from "./ofertas";
 import { ResumenPagos, type DatosResumen } from "./pagos";
 import { Ayuda } from "./ayuda";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, useRef } from "react";
 import { Campo, Formulario, Accion } from "./controles";
 import {
+  db,
   campo,
   filas,
   rpc,
@@ -16,12 +17,71 @@ import {
   type Persona,
   type Rifa,
   type Premio,
+  resumenBoletos,
   type Fila,
   type Numero,
 } from "./datos";
 import { Operaciones } from "./operaciones";
 import { Boletos } from "./boletos";
 import { Sorteo } from "./sorteo";
+function VentasEnVivo({ r, recargar }: { r: Rifa; recargar: () => void }) {
+  const [permitir, cambiar] = useState(!!r.permitir_ventas_sorteo);
+  const [importe, precio] = useState(
+    String(r.precio_en_vivo ?? r.precio_numero),
+  );
+  return (
+    <section>
+      <h3>Ventas durante el sorteo</h3>
+      <Formulario
+        accion="Guardar ventas durante el sorteo"
+        guardar={async (f) => {
+          await rpc("configurar_ventas_sorteo", {
+            p_rifa: r.id_rifa,
+            p_permitir: permitir,
+            p_precio: Number(f.get("precio") || r.precio_numero),
+          });
+          recargar();
+        }}
+      >
+        <label className="interruptor">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={permitir}
+            onChange={(e) => cambiar(e.target.checked)}
+          />{" "}
+          Permitir ventas durante el sorteo
+        </label>
+        <p>Precio normal: {soles(r.precio_numero)}</p>
+        <Campo titulo="Precio por número durante el sorteo (S/)">
+          <input
+            type="number"
+            name="precio"
+            step=".01"
+            min=".01"
+            required={permitir}
+            disabled={!permitir}
+            value={importe}
+            onChange={(e) => precio(e.target.value)}
+          />
+        </Campo>
+        {permitir && (
+          <p>
+            {Number(importe) > 0 &&
+              Number(importe) < r.precio_numero &&
+              "Descuento del " +
+                Number(
+                  ((1 - Number(importe) / r.precio_numero) * 100).toFixed(2),
+                ) +
+                "%. "}
+            Los nuevos números pagados participarán desde la siguiente
+            extracción elegible.
+          </p>
+        )}
+      </Formulario>
+    </section>
+  );
+}
 export function EditarRifa({
   r,
   alGuardar,
@@ -284,6 +344,46 @@ export function PanelRifa({
       vivo = false;
     };
   }, [r.id_rifa, version]);
+  const refrescar = useRef(recargar);
+  useEffect(() => {
+    refrescar.current = recargar;
+  }, [recargar]);
+  useEffect(() => {
+    if (
+      tab !== "Números y ventas" ||
+      !["activa", "en_sorteo"].includes(r.estado)
+    )
+      return;
+    let vigente = true,
+      timer: ReturnType<typeof setTimeout>;
+    async function consultarApertura() {
+      if (!document.hidden && db) {
+        const { data } = await db
+          .from("rifa")
+          .select("estado,ventas_abiertas")
+          .eq("id_rifa", r.id_rifa)
+          .maybeSingle();
+        if (
+          vigente &&
+          data &&
+          (data.estado !== r.estado ||
+            !!data.ventas_abiertas !== !!r.ventas_abiertas)
+        )
+          refrescar.current();
+      }
+      if (vigente) timer = setTimeout(consultarApertura, 3500);
+    }
+    function enfocar() {
+      refrescar.current();
+    }
+    timer = setTimeout(consultarApertura, 3500);
+    window.addEventListener("focus", enfocar);
+    return () => {
+      vigente = false;
+      clearTimeout(timer);
+      window.removeEventListener("focus", enfocar);
+    };
+  }, [r.id_rifa, r.estado, r.ventas_abiertas, tab]);
   return (
     <>
       <p className="ceja">{r.estado.toUpperCase().replace("_", " ")}</p>
@@ -329,6 +429,7 @@ export function PanelRifa({
       {tab === "Configuración" ? (
         r.estado === "activa" ? (
           <>
+            <VentasEnVivo r={r} recargar={recargar} />
             <EditarRifa r={r} alGuardar={recargar} />
             <Accion
               texto="Eliminar rifa sin movimientos"
@@ -486,6 +587,26 @@ export function Participantes({
         rifas.find((r) => r.id_rifa === i)?.nombre || "Rifa";
       const textos: string[] = [];
       const cuentas: DatosResumen[] = [];
+      const ajustes = await filas<Fila>(
+        "vw_anulaciones_parciales",
+        ["id_persona", id],
+        "fecha",
+      );
+      ajustes.forEach((a) =>
+        textos.push(
+          mostrar(a.id_rifa) +
+            " · Anulación parcial · " +
+            fecha(String(a.fecha)) +
+            " · " +
+            a.motivo +
+            " · Venta " +
+            a.id_venta +
+            " · " +
+            soles(Number(a.total_anterior)) +
+            " → " +
+            soles(Number(a.total_nuevo)),
+        ),
+      );
       for (const venta of new Set(ventas.map((v) => String(v.id_venta)))) {
         const lineas = ventas.filter((v) => v.id_venta === venta);
         const pagos = await filas<Fila>(
@@ -501,11 +622,36 @@ export function Participantes({
             lineas[0].estado === "cancelada"
               ? pagos.reduce((a, p) => a + Number(p.importe), 0)
               : Number(neto),
+          anulada: lineas[0].estado_antes_anulacion === "pagada",
           cancelada: lineas[0].estado === "cancelada",
           identidad: [
             mostrar(lineas[0].id_rifa),
             fecha(String(lineas[0].fecha_venta)),
-            lineas.map((v) => "N.º " + numero(Number(v.numero))).join(", "),
+            ...(lineas[0].fecha_cancelacion
+              ? [
+                  fecha(String(lineas[0].fecha_cancelacion)),
+                  "Importe original " +
+                    soles(Number(lineas[0].total_original ?? lineas[0].total)),
+                  lineas[0].motivo_anulacion,
+                  "Venta " + venta,
+                  "Responsable " +
+                    (lineas[0].responsable_anulacion ?? "sin registro"),
+                  "Boletos " +
+                    lineas
+                      .map((l) => l.id_boleto)
+                      .filter(Boolean)
+                      .join(", "),
+                ]
+              : []),
+            resumenBoletos(lineas, []),
+            lineas
+              .map(
+                (v) =>
+                  "N.º " +
+                  numero(Number(v.numero)) +
+                  (v.estado_detalle === "cancelado" ? " (anulado)" : ""),
+              )
+              .join(", "),
           ].join(" · "),
           movimientos: pagos,
         });

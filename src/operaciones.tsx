@@ -15,6 +15,7 @@ import {
   nombre,
   numero,
   soles,
+  resumenBoletos,
   fecha,
   type Rifa,
   type Numero,
@@ -39,6 +40,7 @@ export function Operaciones({
     [pend, saldos] = useState<Fila[]>([]),
     [dev, devoluciones] = useState<Fila[]>([]),
     [pagos, cobros] = useState<Fila[]>([]);
+  const [ajustes, ponerAjustes] = useState<Fila[]>([]);
   const [boletos, emisiones] = useState<Fila[]>([]),
     [lineas, cargarLineas] = useState<Fila[]>([]);
   const [comprador, seleccionar] = useState<Persona | null>(null);
@@ -48,35 +50,42 @@ export function Operaciones({
     [modo, modoVenta] = useState("venta"),
     [err, error] = useState("");
   useEffect(() => {
+    if (r.estado !== "activa") modoVenta("venta");
+  }, [r.estado]);
+  useEffect(() => {
     let vivo = true;
     const f: [string, string] = ["id_rifa", r.id_rifa];
     Promise.all([
       filas<Numero>("numero_rifa", f, "numero"),
       filas<Persona>("persona", undefined, "id_persona"),
       filas<Fila>("venta", f, "id_venta"),
-      filas<Fila>("reserva", f, "id_reserva"),
+      filas<Fila>("vw_historial_reservas", f, "id_reserva"),
       filas<Fila>("detalle_reserva", undefined, "id_detalle_reserva"),
       filas<Fila>("vw_pagos_pendientes", f, "id_venta"),
       filas<Fila>("devolucion", undefined, "id_devolucion"),
       filas<Fila>("vw_pagos_historicos", undefined, "id_pago"),
       filas<Fila>("vw_boletos_rifa", f, "id_boleto"),
       filas<Fila>("vw_detalle_ventas", f, "id_detalle_venta"),
+      filas<Fila>("vw_anulaciones_parciales", f, "id_ajuste"),
     ])
-      .then(([n, p, v, b, d, s, h, c, tickets, detallesVenta]) => {
-        if (vivo) {
-          poner(n);
-          personas(p);
-          ventas(v);
-          reservas(b);
-          detalles(d);
-          saldos(s);
-          devoluciones(h);
-          cobros(c);
-          emisiones(tickets);
-          cargarLineas(detallesVenta);
-          error("");
-        }
-      })
+      .then(
+        ([n, p, v, b, d, s, h, c, tickets, detallesVenta, ajustesVenta]) => {
+          if (vivo) {
+            poner(n);
+            personas(p);
+            ventas(v);
+            reservas(b);
+            detalles(d);
+            saldos(s);
+            devoluciones(h);
+            cobros(c);
+            emisiones(tickets);
+            cargarLineas(detallesVenta);
+            ponerAjustes(ajustesVenta);
+            error("");
+          }
+        },
+      )
       .catch((e) => error(e.message));
     return () => {
       vivo = false;
@@ -116,7 +125,10 @@ export function Operaciones({
     };
   }, [clavePrecio, sel.length, r.id_rifa]);
   const cotizacion = precio?.clave === clavePrecio ? precio.valor : undefined;
-  const abiertos = r.estado === "activa",
+  const [vence, ponerVence] = useState(false);
+  const [pestana, verPestana] = useState("Todas");
+  const abiertos =
+      r.estado === "activa" || (r.estado === "en_sorteo" && r.ventas_abiertas),
     nombreDe = (id: unknown) => {
       const p = ps.find((p) => p.id_persona === id);
       return p ? nombre(p) : "Participante";
@@ -129,10 +141,52 @@ export function Operaciones({
       recargar();
     }
   }
+  const operaciones = [
+    ...vs.map((v) => ({
+      fila: v,
+      tipo:
+        v.estado === "cancelada"
+          ? v.estado_antes_anulacion === "pagada" ||
+            (!v.estado_antes_anulacion &&
+              pagos.some((p) => p.id_venta === v.id_venta))
+            ? "Anulados"
+            : "Cancelados"
+          : "Ventas",
+      fecha: String(v.fecha_cancelacion || v.fecha_venta),
+    })),
+    ...ajustes.map((fila) => ({
+      fila,
+      tipo: "Anulados",
+      fecha: String(fila.fecha),
+    })),
+    ...rs.map((b) => ({
+      fila: b,
+      tipo: ["liberada", "vencida"].includes(String(b.estado))
+        ? "Cancelados"
+        : "Reservas",
+      fecha: String(b.fecha_cambio || b.fecha_creacion),
+    })),
+  ].sort(
+    (a, b) =>
+      Date.parse(b.fecha) - Date.parse(a.fecha) ||
+      String(a.fila.id_venta || a.fila.id_reserva).localeCompare(
+        String(b.fila.id_venta || b.fila.id_reserva),
+      ),
+  );
+  const filtradas = operaciones.filter(
+    (o) => pestana === "Todas" || o.tipo === pestana,
+  );
   return (
     <>
       <h2>Números de la rifa</h2>
       {err && <p role="alert">{err}</p>}
+      {r.estado === "en_sorteo" && (
+        <p>
+          {abiertos
+            ? "Ventas abiertas durante el sorteo"
+            : "Ventas cerradas durante el sorteo"}
+        </p>
+      )}
       <Campo titulo="Filtrar números">
         <select
           value={filtro}
@@ -186,12 +240,16 @@ export function Operaciones({
         <section>
           <h3>Asignar números</h3>
           <ResumenCompra
-            base={r.precio_numero}
+            base={
+              r.estado === "en_sorteo"
+                ? (r.precio_en_vivo ?? r.precio_numero)
+                : r.precio_numero
+            }
             cantidad={sel.length}
             seleccion={ns
               .filter((n) => sel.includes(n.id_numero_rifa))
               .map((n) => n.numero)}
-            ofertas={ofertas}
+            ofertas={r.estado === "en_sorteo" ? [] : ofertas}
             cotizacion={cotizacion}
           />
           {sel.length > 0 && (
@@ -216,6 +274,17 @@ export function Operaciones({
                   p_persona: comprador.id_persona,
                   p_numeros: sel,
                 };
+                if (
+                  modo === "reserva" &&
+                  vence &&
+                  Date.parse(
+                    String(f.get("dia")) +
+                      "T" +
+                      String(f.get("hora")) +
+                      ":00-05:00",
+                  ) <= Date.now()
+                )
+                  throw Error("Indica una fecha y hora futuras de Perú.");
                 await ejecutar(
                   modo === "venta"
                     ? "registrar_venta_cotizada"
@@ -224,9 +293,14 @@ export function Operaciones({
                     ? { ...args, p_total: cotizacion?.total }
                     : {
                         ...args,
-                        p_vencimiento: new Date(
-                          Date.now() + Number(f.get("minutos")) * 60000,
-                        ).toISOString(),
+                        p_vencimiento: vence
+                          ? new Date(
+                              String(f.get("dia")) +
+                                "T" +
+                                String(f.get("hora")) +
+                                ":00-05:00",
+                            ).toISOString()
+                          : null,
                       },
                 );
                 elegir([]);
@@ -239,31 +313,92 @@ export function Operaciones({
                   onChange={(e) => modoVenta(e.target.value)}
                 >
                   <option value="venta">Venta</option>
-                  <option value="reserva">Reserva</option>
+                  {r.estado === "activa" && (
+                    <option value="reserva">Reserva</option>
+                  )}
                 </select>
               </Campo>
               {modo === "reserva" && (
-                <Campo titulo="Vencimiento en minutos">
-                  <input
-                    name="minutos"
-                    type="number"
-                    min="1"
-                    defaultValue="60"
-                    required
-                  />
-                </Campo>
+                <>
+                  <label className="interruptor">
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      checked={vence}
+                      onChange={(e) => ponerVence(e.target.checked)}
+                    />{" "}
+                    ¿La reserva tiene vencimiento?
+                  </label>
+                  <Campo titulo="Fecha de vencimiento (Perú)">
+                    <input
+                      type="date"
+                      name="dia"
+                      required={vence}
+                      disabled={!vence}
+                    />
+                  </Campo>
+                  <Campo titulo="Hora de vencimiento (Perú)">
+                    <input
+                      type="time"
+                      name="hora"
+                      required={vence}
+                      disabled={!vence}
+                    />
+                  </Campo>
+                  {!vence && (
+                    <p>
+                      Esta reserva no tiene fecha de vencimiento. Los números
+                      permanecerán reservados hasta que confirmes o canceles la
+                      operación.
+                    </p>
+                  )}
+                </>
               )}
             </Formulario>
           )}
         </section>
       )}
-      <h2>
-        Reservas activas <Ayuda tema="Reservar" />
-      </h2>
-      {!rs.some((b) => b.estado === "activa") && <p>Sin reservas activas.</p>}
-      {rs
-        .filter((b) => b.estado === "activa")
-        .map((b) => {
+      <h2>Historial de operaciones</h2>
+      <nav className="filtros-operaciones" aria-label="Operaciones">
+        {["Todas", "Ventas", "Reservas", "Cancelados", "Anulados"].map((t) => (
+          <button
+            key={t}
+            aria-pressed={pestana === t}
+            onClick={() => verPestana(t)}
+          >
+            {t} ·{" "}
+            {t === "Todas"
+              ? operaciones.length
+              : operaciones.filter((o) => o.tipo === t).length}
+          </button>
+        ))}
+      </nav>
+      {!filtradas.length && <p>Sin operaciones en esta sección.</p>}
+      {filtradas.map(({ fila: v, tipo }) => {
+        if (v.id_ajuste)
+          return (
+            <details key={String(v.id_ajuste)}>
+              <summary>
+                {nombreDe(v.id_persona)} · Anulación parcial ·{" "}
+                {fecha(String(v.fecha))}
+              </summary>
+              <p>
+                {v.motivo} · {soles(Number(v.total_anterior))} →{" "}
+                {soles(Number(v.total_nuevo))}
+              </p>
+              <p>
+                Venta {v.id_venta} · {fecha(String(v.fecha_venta))} ·
+                Responsable {v.id_perfil}
+              </p>
+              {Array.isArray(v.numeros_retirados) && (
+                <p>
+                  Números anulados: {v.numeros_retirados.map(numero).join(", ")}
+                </p>
+              )}
+            </details>
+          );
+        if (v.id_reserva) {
+          const b = v;
           const numeros = ds
             .filter((d) => d.id_reserva === b.id_reserva)
             .map((d) => String(d.id_numero_rifa));
@@ -275,71 +410,90 @@ export function Operaciones({
                   .filter((n) => numeros.includes(n.id_numero_rifa))
                   .map((n) => numero(n.numero))
                   .join(", ")}{" "}
-                · Vence {fecha(String(b.fecha_vencimiento))}
+                ·{" "}
+                {b.fecha_vencimiento
+                  ? "Vence " + fecha(String(b.fecha_vencimiento))
+                  : "Sin vencimiento"}
               </p>
               <p>
-                Reservado ·{" "}
-                <span className="financiero">Pendiente de pago</span> · Saldo{" "}
-                {soles(numeros.length * Number(b.precio_unitario))}
+                {fecha(String(b.fecha_creacion))} ·{" "}
+                {b.estado === "activa"
+                  ? "Reservado"
+                  : b.estado === "liberada"
+                    ? "Cancelado"
+                    : b.estado === "vencida"
+                      ? "Cancelado por vencimiento"
+                      : "Convertida en venta"}{" "}
+                {b.fecha_cambio && fecha(String(b.fecha_cambio))}
               </p>
-              <p>
-                {boletos.some(
-                  (t) =>
-                    t.id_reserva === b.id_reserva && t.estado === "emitido",
-                )
-                  ? "Emitido"
-                  : "Pendiente de emisión"}{" "}
-                <Ayuda tema="Emitir" />
-              </p>
-              <div className="acciones">
-                {!boletos.some((t) => t.id_reserva === b.id_reserva) && (
-                  <Accion
-                    texto="Emitir boleto"
-                    ejecutar={() =>
-                      ejecutar("emitir_boletos_reserva", {
-                        p_reserva: b.id_reserva,
-                      })
-                    }
-                  />
-                )}
-                <Accion
-                  texto="Convertir en venta"
-                  ejecutar={async () => {
-                    const c = await rpc<Cotizacion>("cotizar_reserva", {
-                      p_reserva: b.id_reserva,
-                    });
-                    if (
-                      !confirm(
-                        "Convertir la reserva por " + soles(c.total) + "?",
-                      )
+              {b.estado === "activa" && (
+                <>
+                  <p>
+                    Reservado ·{" "}
+                    <span className="financiero">Pendiente de pago</span> ·
+                    Saldo {soles(Number(b.saldo))}
+                    {b.tarifa_heredada && " · Reserva anterior a la actualización. Verifica el importe con el participante: se conservó el precio base y la promoción disponible al actualizar."}
+                  </p>
+                  <p>
+                    {boletos.some(
+                      (t) =>
+                        t.id_reserva === b.id_reserva && t.estado === "emitido",
                     )
-                      throw Error("Reserva conservada.");
-                    await ejecutar("registrar_venta_cotizada", {
-                      p_total: c.total,
-                      p_rifa: r.id_rifa,
-                      p_persona: b.id_persona,
-                      p_numeros: numeros,
-                      p_reserva: b.id_reserva,
-                    });
-                  }}
-                />
-                <Accion
-                  texto="Liberar"
-                  ejecutar={async () => {
-                    if (!confirm("¿Liberar los números y anular sus boletos?"))
-                      throw Error("Reserva conservada.");
-                    await ejecutar("liberar_reserva", {
-                      p_reserva: b.id_reserva,
-                    });
-                  }}
-                />
-              </div>
+                      ? "Emitido"
+                      : "Pendiente de emisión"}{" "}
+                    <Ayuda tema="Emitir" />
+                  </p>
+                  <div className="acciones">
+                    {!boletos.some((t) => t.id_reserva === b.id_reserva) && (
+                      <Accion
+                        texto="Emitir boleto"
+                        ejecutar={() =>
+                          ejecutar("emitir_boletos_reserva", {
+                            p_reserva: b.id_reserva,
+                          })
+                        }
+                      />
+                    )}
+                    <Accion
+                      deshabilitado={!abiertos}
+                      texto="Convertir en venta"
+                      ejecutar={async () => {
+                        const c = await rpc<Cotizacion>("cotizar_reserva", {
+                          p_reserva: b.id_reserva,
+                        });
+                        if (
+                          !confirm(
+                            (b.tarifa_heredada ? "Reserva histórica: confirma que el importe coincide con lo acordado. " : "") + "¿Convertir la reserva por " + soles(c.total) + "?",
+                          )
+                        )
+                          throw Error("Reserva conservada.");
+                        await ejecutar("registrar_venta_cotizada", {
+                          p_total: c.total,
+                          p_rifa: r.id_rifa,
+                          p_persona: b.id_persona,
+                          p_numeros: numeros,
+                          p_reserva: b.id_reserva,
+                        });
+                      }}
+                    />
+                    <Accion
+                      texto="Liberar"
+                      ejecutar={async () => {
+                        if (
+                          !confirm("¿Liberar los números y anular sus boletos?")
+                        )
+                          throw Error("Reserva conservada.");
+                        await ejecutar("liberar_reserva", {
+                          p_reserva: b.id_reserva,
+                        });
+                      }}
+                    />
+                  </div>
+                </>
+              )}
             </section>
           );
-        })}
-      <h2>Ventas y pagos</h2>
-      {!vs.length && <p>Aún no hay ventas.</p>}
-      {vs.map((v) => {
+        }
         const movimientos = pagos
           .filter((p) => p.id_venta === v.id_venta)
           .sort(
@@ -349,12 +503,22 @@ export function Operaciones({
           );
 
         const numerosVenta = lineas
-          .filter(
+          .filter((l) => l.id_venta === v.id_venta)
+          .map(
             (l) =>
-              l.id_venta === v.id_venta && l.estado_detalle !== "cancelado",
-          )
-          .map((l) => "N.º " + numero(Number(l.numero)));
-        const identidad = [numerosVenta.join(", "), nombreDe(v.id_persona)]
+              "N.º " +
+              numero(Number(l.numero)) +
+              (l.estado_detalle === "cancelado" ? " (anulado)" : ""),
+          );
+        const estadoBoleto = resumenBoletos(
+          lineas.filter((l) => l.id_venta === v.id_venta),
+          boletos.filter((t) => t.id_venta === v.id_venta),
+        );
+        const identidad = [
+          numerosVenta.join(", "),
+          nombreDe(v.id_persona),
+          estadoBoleto.includes("anulado") ? estadoBoleto : "",
+        ]
           .filter(Boolean)
           .join(" · ");
         const emitidos = boletos.filter((t) => t.id_venta === v.id_venta);
@@ -382,18 +546,50 @@ export function Operaciones({
                   ?.click();
             }}
           >
-            <summary>
+            <summary data-operacion={tipo}>
               {nombreDe(v.id_persona)} ·{" "}
               {v.estado === "pendiente" && saldo !== null
                 ? (cobrado > 0 ? "Pago parcial" : "Sin pagos") +
                   " · Saldo " +
                   soles(saldo)
-                : v.estado + " · " + soles(Number(v.total))}
+                : (v.estado === "cancelada"
+                    ? tipo === "Anulados"
+                      ? "Anulado"
+                      : "Cancelado"
+                    : v.estado === "pagada"
+                      ? "Vendido"
+                      : v.estado) +
+                  " · " +
+                  soles(Number(v.total))}
+              <small>
+                {" "}
+                · {numerosVenta.length} números ·{" "}
+                {fecha(String(v.fecha_cancelacion || v.fecha_venta))}
+              </small>
             </summary>
-            <p>{fecha(String(v.fecha_venta))}</p>
+            <p>
+              {fecha(String(v.fecha_venta))}
+              {v.durante_sorteo && " · Venta en vivo"}
+            </p>
+            {v.fecha_cancelacion && (
+              <p>
+                Importe original{" "}
+                {soles(
+                  Number(
+                    lineas.find((l) => l.id_venta === v.id_venta)
+                      ?.total_original ?? v.total,
+                  ),
+                )}{" "}
+                · {tipo} · {fecha(String(v.fecha_cancelacion))} ·{" "}
+                {v.motivo_anulacion} · Responsable {v.responsable_anulacion} ·
+                Operación {v.id_venta} · Boletos{" "}
+                {emitidos.map((b) => b.id_boleto).join(", ")}
+              </p>
+            )}
             <ResumenPagos
               total={Number(v.total)}
               cobrado={cobrado}
+              anulada={tipo === "Anulados"}
               cancelada={v.estado === "cancelada"}
               identidad={identidad}
               cantidad={numerosVenta.length}
@@ -404,11 +600,7 @@ export function Operaciones({
                 ? "Asignación cancelada"
                 : "Número asignado"}{" "}
               ·{" "}
-              {emitidos.length
-                ? emitidos[0].estado === "anulado"
-                  ? "Boleto anulado"
-                  : "Boleto emitido"
-                : "Pendiente de emisión"}{" "}
+              {estadoBoleto}{" "}
               <Ayuda tema="Emitir" />
             </p>
 
@@ -440,7 +632,7 @@ export function Operaciones({
                   }
                 />
               )}
-            {abiertos && v.estado !== "cancelada" && (
+            {r.estado === "activa" && v.estado !== "cancelada" && (
               <CancelarNumeros
                 venta={String(v.id_venta)}
                 lineas={lineas.filter(
@@ -451,7 +643,7 @@ export function Operaciones({
                 recargar={recargar}
               />
             )}
-            {abiertos && v.estado !== "cancelada" && (
+            {r.estado === "activa" && v.estado !== "cancelada" && (
               <Formulario
                 accion="Cancelar venta"
                 ayuda="Cancelar"

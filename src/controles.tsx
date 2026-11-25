@@ -91,15 +91,22 @@ export function Campo({
 }
 export function Accion({
   texto,
+  deshabilitado,
   ayuda,
   ejecutar,
 }: {
   texto: string;
+  deshabilitado?: boolean;
   ayuda?: TemaAyuda;
   ejecutar: () => Promise<unknown>;
 }) {
   return (
-    <Formulario ayuda={ayuda} accion={texto} guardar={ejecutar}>
+    <Formulario
+      deshabilitado={deshabilitado}
+      ayuda={ayuda}
+      accion={texto}
+      guardar={ejecutar}
+    >
       {null}
     </Formulario>
   );

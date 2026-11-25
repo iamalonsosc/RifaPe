@@ -4,6 +4,9 @@ const url = import.meta.env.VITE_SUPABASE_URL,
 export const db = url && clave ? createClient(url, clave) : null;
 export type Fila = { [campo: string]: string | number | boolean | null };
 export interface Rifa {
+  permitir_ventas_sorteo?: boolean;
+  ventas_abiertas?: boolean;
+  precio_en_vivo?: number;
   token_consulta?: string;
   id_rifa: string;
   nombre: string;
@@ -47,6 +50,14 @@ export interface Visual {
   fondo_url: string | null;
 }
 export interface Ticket {
+  premios_publicos?: {
+    orden: number;
+    nombre: string;
+    descripcion?: string;
+    imagen?: string;
+    sorpresa: boolean;
+  }[];
+  numeros_anulados?: number[];
   numeros?: number[];
   codigo_grupo?: string;
   estado_rifa?: string;
@@ -99,6 +110,40 @@ export async function rpc<T = unknown>(
   const { data, error } = await db!.rpc(nombre, parametros);
   if (error) throw Error(error.message);
   return data as T;
+}
+export function resumenBoletos(lineas: Fila[], boletos: Fila[]) {
+  const anulados = new Set(
+    boletos
+      .filter((b) => b.estado === "anulado")
+      .map((b) => b.id_detalle_venta),
+  );
+  const retirados: number[] = [],
+    vigentes: number[] = [];
+  for (const linea of lineas) {
+    const lista =
+      linea.estado_detalle === "cancelado" ||
+      anulados.has(linea.id_detalle_venta)
+        ? retirados
+        : vigentes;
+    lista.push(Number(linea.numero));
+  }
+  const listar = (ns: number[]) =>
+    ns
+      .sort((a, b) => a - b)
+      .map(numero)
+      .join(", ");
+  if (retirados.length && vigentes.length)
+    return (
+      "Boleto parcialmente anulado · Números vigentes: " +
+      listar(vigentes) +
+      " · Números anulados: " +
+      listar(retirados)
+    );
+  if (retirados.length)
+    return "Boleto anulado · Números anulados: " + listar(retirados);
+  return boletos.length || lineas.some((l) => l.id_boleto)
+    ? "Boleto vigente"
+    : "Pendiente de emisión";
 }
 export const soles = (n: number) =>
   new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN" }).format(

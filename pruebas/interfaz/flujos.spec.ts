@@ -48,7 +48,7 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
     fondo_url: "https://pruebas.supabase.co/imagen/navidad.png" as
       string | null,
   };
-  await page.route("https://pruebas.supabase.co/**", async (route) => {
+  await page.context().route("https://pruebas.supabase.co/**", async (route) => {
     const ruta = new URL(route.request().url()).pathname;
     let data: unknown = [];
     const numeros = [7, 9, 25, 30];
@@ -60,10 +60,19 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
     if (ruta.endsWith("/vw_premios_rifa")) data = premio ? [premio] : [];
     if (ruta.endsWith("/iniciar_sorteo")) iniciado = true;
     if (ruta.endsWith("/resumen_candidatos"))
-      data = { numeros: 4, participantes: 2, muestra: numeros };
+      data = {
+        estado_rifa: iniciado ? "en_sorteo" : "activa",
+        extracciones: sorteado ? 1 : 0,
+        ultimo_premio: sorteado ? "premio" : null,
+        vendidos: 62,
+        inscritos: 62,
+        numeros: 62,
+        participantes: 2,
+        muestra: Array.from({ length: 62 }, (_, i) => i + 1),
+      };
     if (ruta.endsWith("/extraer_numero_sorteo")) {
       sorteado = true;
-      data = { es_ganadora: true, id_numero_rifa: "7" };
+      data = { es_ganadora: true, id_numero_rifa: "7", numeros_elegibles: route.request().postDataJSON().p_elegibles };
     }
     if (iniciado && ruta.endsWith("/sorteo")) data = [{ id_sorteo: "oficial" }];
     if (iniciado && ruta.endsWith("/vw_premios_rifa"))
@@ -77,6 +86,7 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
           es_sorpresa: false,
         },
       ];
+    if (sorteado && ruta.endsWith("/vw_selecciones_rifa")) data = [{id_extraccion:"primera",id_premio_rifa:"premio",numero:7,orden_extraccion:1,es_ganadora:true}];
     if (sorteado && ruta.endsWith("/vw_historial_ganadores"))
       data = [
         {
@@ -138,21 +148,23 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
     }
     if (ruta.endsWith("/vw_detalle_ventas"))
       data = numeros.map((n) => ({
-        id_venta: n === 7 ? "parcial" : "otra-venta",
+        id_venta: n === 7 ? "parcial" : "antigua",
+        estado_detalle: n === 30 ? "cancelado" : "activo",
         numero: n,
         fecha_venta: "2026-12-01T12:00:00Z",
         total: 20,
         id_detalle_venta: String(n),
         id_persona: n === 25 ? "otra" : "alonso",
       }));
-    if (ruta.endsWith("/vw_boletos_rifa") || ruta.endsWith("/vw_comprobantes"))
-      data = (ruta.endsWith("/vw_comprobantes") ? [7, 25] : numeros).map(
+    if (ruta.endsWith("/vw_boletos_rifa") || ruta.endsWith("/vw_comprobantes_operacion"))
+      data = (ruta.endsWith("/vw_comprobantes_operacion") ? [7, 25] : numeros).map(
         (n) => ({
           id_detalle_venta: String(n),
           id_persona: n === 25 ? "otra" : "alonso",
           token_publico: "prueba-" + n,
           token_grupo: "prueba-" + n,
-          numeros: n === 7 ? [7, 9] : [n],
+          numeros: n === 7 ? [7, 9, 11] : [n],
+          estados_numeros: [{numero:7,estado_numero:"pagada"},{numero:9,estado_numero:"reservado"},{numero:11,estado_numero:"pendiente"}],
           estado_rifa: "activa",
           estado: n === 30 ? "anulado" : "emitido",
           datos_emision_historicos: {
@@ -221,11 +233,41 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
     if (ruta.endsWith("/venta"))
       data = [
         {
+          id_venta: "antigua",
+          id_persona: "alonso",
+          total: 15,
+          estado: "pagada",
+          fecha_venta: "2026-12-01T09:00:00Z",
+        },
+        {
+          id_venta: "anulada",
+          id_persona: "alonso",
+          total: 30,
+          estado: "cancelada",
+          estado_antes_anulacion: "pagada",
+          fecha_venta: "2026-11-30T10:00:00Z",
+          fecha_cancelacion: "2026-12-01T12:00:00Z",
+        },
+        {
           id_venta: "parcial",
           id_persona: "alonso",
           total: 20,
           estado: abonado === 20 ? "pagada" : "pendiente",
           fecha_venta: "2026-12-01T10:00:00Z",
+        },
+      ];
+    if (ruta.endsWith("/vw_historial_reservas"))
+      data = [
+        {
+          id_reserva:"convertida", estado:"convertida", fecha_creacion:"2026-11-29T09:00:00Z",
+        }, { id_reserva:"activa", estado:"activa", saldo:25, precio_unitario:10, fecha_creacion:"2026-11-29T10:00:00Z",
+        }, {
+          id_reserva: "liberada",
+          id_persona: "alonso",
+          estado: "liberada",
+          fecha_creacion: "2026-11-29T11:00:00Z",
+          fecha_cambio: "2026-12-01T11:00:00Z",
+          fecha_vencimiento: null,
         },
       ];
     if (ruta.endsWith("/vw_pagos_historicos"))
@@ -337,6 +379,28 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   const ventaParcial = page
     .locator("details")
     .filter({ has: page.locator("summary", { hasText: "Sin pagos" }) });
+  await page.getByRole("button", { name: "Ventas · 2", exact: true }).click();
+  await page.getByRole("button", { name: "Reservas · 2", exact:true }).click();
+  await expect(page.getByText(/Convertida en venta/)).toBeVisible();
+  await expect(page.getByText(/Saldo S\/\s*25\.00/)).toBeVisible();
+  await page.getByRole("button", { name: "Ventas · 2", exact:true }).click();
+  const ventasOrdenadas = page.locator("summary[data-operacion=Ventas]");
+  await expect(ventasOrdenadas.first()).toContainText("Sin pagos");
+  await expect(ventasOrdenadas.last()).toContainText("15.00");
+  await page.getByRole("button", { name: "Anulados · 1", exact: true }).click();
+  await expect(page.locator("summary[data-operacion=Anulados]")).toContainText(
+    "30.00",
+  );
+  await page
+    .getByRole("button", { name: "Cancelados · 1", exact: true })
+    .click();
+  await expect(
+    page.getByText("Sin vencimiento", { exact: false }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Ventas · 2", exact: true }).click();
+  await ventasOrdenadas.last().click();
+  await expect(page.getByText(/Boleto parcialmente anulado · Números vigentes: 009, 025 · Números anulados: 030/).first()).toBeVisible();
+  await ventasOrdenadas.last().click();
   await ventaParcial.locator("summary").click();
   const importe = page.getByLabel("Importe del abono", { exact: true });
   const registrar = page.getByRole("button", {
@@ -382,10 +446,10 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
     "Pago de saldo pendiente",
   );
   await page
-    .locator(".resumen-pagos")
+    .locator(".resumen-pagos:visible")
     .screenshot({ path: test.info().outputPath("historial.png") });
   await expect(
-    page.locator("summary").filter({ hasText: "pagada" }),
+    page.locator("summary").filter({ hasText: "Vendido" }).first(),
   ).toContainText("20.00");
   expect(
     await page.evaluate(
@@ -402,6 +466,13 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   ).toHaveCount(0);
   await buscar.fill("alo");
   await page.getByRole("button", { name: /Alonso Sánchez/ }).click();
+  await page.getByRole("combobox", {name:"Operación", exact:true}).selectOption("reserva");
+  await expect(page.getByLabel("Fecha de vencimiento (Perú)")).toBeDisabled();
+  await page
+    .getByRole("switch", { name: "¿La reserva tiene vencimiento?" })
+    .check();
+  await expect(page.getByLabel("Hora de vencimiento (Perú)")).toBeEnabled();
+  await page.getByRole("combobox", {name:"Operación", exact:true}).selectOption("venta");
   await page.getByRole("button", { name: "Registrar venta" }).click();
   await expect.poll(() => asignacion).toBe("alonso");
   await page
@@ -420,7 +491,8 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   await expect.poll(() => asignacion).toBe("nueva");
   await page.getByRole("button", { name: "Boletos", exact: true }).click();
   await page.getByText("Lugar y transmisión", { exact: true }).click();
-  await page.getByLabel("Modalidad").selectOption("tiktok");
+  await page.getByLabel("Modalidad").selectOption("virtual");
+  await page.getByLabel("Plataforma de transmisión").selectOption("tiktok");
   await page
     .getByLabel("Usuario o enlace de TikTok")
     .fill("https://www.tiktok.com/@iamalonsosc");
@@ -435,11 +507,64 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   await expect(
     page.getByRole("link", { name: "Abrir WhatsApp" }),
   ).toHaveAttribute("href", /^https:\/\/wa\.me\/51991111111\?text=/);
+  await page.getByLabel("Mensaje personalizado").fill("Gracias Alonso");
+
+  const imagenCompartida = page.getByRole("link", { name: "Descargar imagen" });
+  await expect(imagenCompartida).toHaveAttribute("href", /^data:image\/png/);
+  for (const numero of ["987654321", "51987654321", "+51 987-654-321"]) {
+    await page.getByLabel("Teléfono para este envío").fill(numero);
+    await expect(
+      page.getByRole("link", { name: "Abrir WhatsApp" }),
+    ).toHaveAttribute("href", /^https:\/\/wa\.me\/51987654321\?text=/);
+  }
+  const mensaje = new URL(
+    (await page
+      .getByRole("link", { name: "Abrir WhatsApp" })
+      .getAttribute("href"))!,
+  ).searchParams.get("text")!;
+  for (const contenido of [
+    "Gracias Alonso",
+    "007 · ¡Gracias por participar!",
+    "009 · ¡Gracias por reservar!",
+    "011 · Tu boleto ha sido registrado correctamente.",
+    "007 · 009",
+
+    "Alonso",
+    "007",
+    "/boleto/",
+  ])
+    expect(mensaje).toContain(contenido);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "canShare", {
+      configurable: true,
+      value: () => true,
+    });
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async (data: ShareData) => {
+        document.body.dataset.archivo = data.files?.[0]?.type;
+        document.body.dataset.mensaje = data.text;
+      },
+    });
+  });
+  await page.getByLabel("Mensaje personalizado").fill("Tu boleto de verano");
+  await page
+    .getByRole("button", { name: "Compartir imagen y mensaje" })
+    .click();
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-archivo",
+    "image/png",
+  );
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-mensaje",
+    /Tu boleto de verano/,
+  );
   await expect(page.getByRole("checkbox", { name: "025" })).toHaveCount(0);
   await expect(page.getByRole("checkbox", { name: "030" })).toHaveCount(0);
   await expect(page.locator(".numeros-agrupados:visible b")).toHaveText([
     "007",
     "009",
+    "011",
   ]);
   await expect(
     page.getByAltText("QR de consulta del boleto").filter({ visible: true }),
@@ -484,9 +609,15 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   await page.getByRole("button", { name: "Iniciar sorteo oficial" }).click();
   const pantalla = page.locator(".transmision");
   await expect(pantalla.getByAltText("Premio sorpresa")).toBeVisible();
+  await expect(pantalla.getByLabel("62 pelotas en la esfera")).toBeVisible();
   await pantalla
     .locator(".maquina")
     .screenshot({ path: test.info().outputPath("tombola.png") });
+  const observadora = await page.context().newPage();
+  await observadora.goto("/");
+  await observadora.locator("button.tarjeta").filter({hasText:"Rifa de prueba"}).click();
+  await observadora.getByRole("button",{name:"Sorteo",exact:true}).click();
+  await expect(observadora.getByLabel("62 pelotas en la esfera")).toBeVisible();
   await pantalla.getByRole("button", { name: "Sortear", exact: true }).click();
   await expect(pantalla.getByText("Mezclando los números…")).toBeVisible();
   await expect(
@@ -496,6 +627,8 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
     .locator(".maquina")
     .screenshot({ path: test.info().outputPath("mezcla.png") });
   await expect(pantalla.locator(".salida-oficial")).toHaveText("007");
+  await expect(observadora.locator(".transmision .bola")).toContainText("007 · Alonso");
+  await observadora.close();
   await page.reload();
   await page
     .locator("button.tarjeta")
@@ -577,20 +710,21 @@ test("Boleto público, QR, destino y descargas PNG/PDF", async ({ page }) => {
   await expect(page.getByAltText("Fotografía de Rifa de prueba")).toBeVisible();
   await expect(page.getByText("Y MÁS PREMIOS")).toBeVisible();
   await expect(page.getByAltText("QR de consulta del boleto")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Ver sorteo" })).toHaveAttribute(
-    "href",
-    destino,
-  );
+  await expect(
+    page.getByRole("link", { name: "Ver sorteo en vivo" }),
+  ).toHaveAttribute("href", destino);
   const ticket = await page.locator(".boleto").boundingBox();
-  await expect(page.locator(".plataforma-boleto")).toHaveCSS("color", "rgb(255, 255, 255)");
-  await expect(page.locator(".datos-titular-boleto").getByRole("link", { name: "Microsoft Teams" })).toHaveAttribute("href", destino);
+  await expect(page.locator(".plataforma-boleto")).toHaveCSS(
+    "color",
+    "rgb(255, 255, 255)",
+  );
+  await expect(
+    page
+      .locator(".datos-titular-boleto")
+      .getByRole("link", { name: "Microsoft Teams" }),
+  ).toHaveAttribute("href", destino);
   await expect(page.locator(".boleto")).not.toContainText(destino);
-  await page.getByText("Compartir por WhatsApp", { exact: true }).click();
-  const chat = page.getByRole("link", { name: "Abrir WhatsApp" });
-  await expect(chat).toBeVisible();
-  const textoVirtual = new URL((await chat.getAttribute("href"))!).searchParams.get("text");
-  expect(textoVirtual).toContain("🎉 *¡Gracias por participar, Alonso!*");
-  expect(textoVirtual).toContain("Ingresa a la transmisión el día del sorteo:\n" + destino);
+  await expect(page.getByText("Compartir por WhatsApp")).toHaveCount(0);
   expect(ticket!.width).toBeGreaterThan(ticket!.height * 1.5);
   for (const tipo of ["PNG", "PDF"]) {
     const pendiente = page.waitForEvent("download");
@@ -656,58 +790,10 @@ test("Premios por espacio y WhatsApp individual con imagen y mensaje", async ({
       true,
     );
   }
-  await page.getByText("Compartir por WhatsApp").click();
-  await page.getByLabel("Mensaje personalizado").fill("Gracias Alonso");
-
-  const archivo = page.getByRole("link", { name: "Descargar imagen" });
-  await expect(archivo).toHaveAttribute("href", /^data:image\/png/);
-  for (const numero of ["987654321", "51987654321", "+51 987-654-321"]) {
-    await page.getByLabel("Teléfono para este envío").fill(numero);
-    await expect(
-      page.getByRole("link", { name: "Abrir WhatsApp" }),
-    ).toHaveAttribute("href", /^https:\/\/wa\.me\/51987654321\?text=/);
-  }
-  const mensaje = new URL(
-    (await page
-      .getByRole("link", { name: "Abrir WhatsApp" })
-      .getAttribute("href"))!,
-  ).searchParams.get("text")!;
-  for (const contenido of [
-    "Gracias Alonso",
-    "007 · 008 · 009 · 010 · 011\n012",
-    "📍 *Lugar:* Av. Lima 100",
-    "🗺️ *Cómo llegar:* https://maps.app.goo.gl/ejemplo",
-    "Rifa de verano",
-    "Alonso",
-    "007",
-    page.url(),
-  ])
-    expect(mensaje).toContain(contenido);
-  await page.evaluate(() => {
-    Object.defineProperty(navigator, "canShare", {
-      configurable: true,
-      value: () => true,
-    });
-    Object.defineProperty(navigator, "share", {
-      configurable: true,
-      value: async (data: ShareData) => {
-        document.body.dataset.archivo = data.files?.[0]?.type;
-        document.body.dataset.mensaje = data.text;
-      },
-    });
-  });
-  await page.getByLabel("Mensaje personalizado").fill("Tu boleto de verano");
-  await page
-    .getByRole("button", { name: "Compartir imagen y mensaje" })
-    .click();
-  await expect(page.locator("body")).toHaveAttribute(
-    "data-archivo",
-    "image/png",
-  );
-  await expect(page.locator("body")).toHaveAttribute(
-    "data-mensaje",
-    /Tu boleto de verano/,
-  );
+  await expect(page.getByText("Compartir por WhatsApp")).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Ver ubicación" }),
+  ).toHaveAttribute("href", "https://maps.app.goo.gl/ejemplo");
 });
 
 test("Cuadrícula completa para 1 a 100 números", async ({ page }) => {
@@ -764,10 +850,64 @@ test("Cuadrícula completa para 1 a 100 números", async ({ page }) => {
       );
     expect(desborde).toBe(false);
     if (cantidad === 6 || cantidad === 100)
-      await page
-        .locator(".boleto")
-        .screenshot({
-          path: test.info().outputPath("boleto-" + cantidad + ".png"),
-        });
+      await page.locator(".boleto").screenshot({
+        path: test.info().outputPath("boleto-" + cantidad + ".png"),
+      });
   }
+});
+
+test("Catálogo público móvil y cambios de modalidad con el mismo enlace", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  const codigo = "681ca001-34b7-4256-a390-3cfff5575111";
+  let modalidad = "sin_definir";
+  await page.route("**/functions/v1/consultar-boleto", (route) =>
+    route.fulfill({
+      json: {
+        codigo,
+        modalidad,
+        estado: "emitido",
+        fecha: "2026-12-13T22:00:00Z",
+        rifa: "Diciembre",
+        participante: "Comprador",
+        numero: 7,
+        direccion: modalidad === "presencial" ? "Av. Lima 123" : null,
+        destino: modalidad === "meet" ? "https://meet.google.com/abc" : null,
+        plantilla: { titulo: "Boleto", tema: "elegante", mostrar_lugar: true },
+        premios_publicos: Array.from({ length: 25 }, (_, i) => ({
+          orden: i + 1,
+          nombre: i === 0 ? "Premio sorpresa" : "Premio " + (i + 1),
+          sorpresa: i === 0,
+        })),
+      },
+    }),
+  );
+  await page.goto("/boleto/" + codigo);
+  await expect(
+    page.getByRole("button", { name: "Lugar del sorteo por definir" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByText(
+      "Por el momento no está definido, consultar el link de su boleto 7 días antes del evento.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.locator(".catalogo-premios article")).toHaveCount(25);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  modalidad = "presencial";
+  await page.reload();
+  await expect(
+    page.getByRole("link", { name: "Ver ubicación" }),
+  ).toHaveAttribute("href", /google.com\/maps\/search/);
+  modalidad = "meet";
+  await page.reload();
+  await expect(
+    page.getByRole("link", { name: "Ver sorteo en vivo" }),
+  ).toHaveAttribute("href", "https://meet.google.com/abc");
+  await expect(page.getByText("Compartir por WhatsApp")).toHaveCount(0);
 });

@@ -1,4 +1,8 @@
-import { PlataformaBoleto, plataformaDe, nombresPlataforma } from "./plataformas";
+import {
+  PlataformaBoleto,
+  plataformaDe,
+  nombresPlataforma,
+} from "./plataformas";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import {
@@ -136,8 +140,13 @@ function PremiosBoleto({ b }: { b: Ticket }) {
           posiciones.push({ columna, arriba });
           arriba += fila.offsetHeight + margen;
         }
-        const alturas = filas.slice(0, posiciones.length).map(fila => fila.offsetHeight);
-        const total = alturas.reduce((suma, altura) => suma + altura + margen, 0);
+        const alturas = filas
+          .slice(0, posiciones.length)
+          .map((fila) => fila.offsetHeight);
+        const total = alturas.reduce(
+          (suma, altura) => suma + altura + margen,
+          0,
+        );
         let izquierda = 0;
         let diferencia = Infinity;
         let corte = alturas.length;
@@ -145,7 +154,10 @@ function PremiosBoleto({ b }: { b: Ticket }) {
           izquierda += alturas[i - 1] + margen;
           const derecha = total - izquierda;
           const distancia = Math.abs(izquierda - derecha);
-          if (Math.max(izquierda, derecha) - margen <= alto && distancia < diferencia) {
+          if (
+            Math.max(izquierda, derecha) - margen <= alto &&
+            distancia < diferencia
+          ) {
             corte = i;
             diferencia = distancia;
           }
@@ -214,7 +226,39 @@ function PremiosBoleto({ b }: { b: Ticket }) {
     </div>
   );
 }
+const lugarPendiente =
+  "Por el momento no está definido, consultar el link de su boleto 7 días antes del evento.";
+function AccesoEvento({ b }: { b: Ticket }) {
+  const presencial = b.modalidad === "presencial" || !!b.direccion;
+  const enlace = presencial
+    ? b.enlace_mapa ||
+      (b.direccion
+        ? "https://www.google.com/maps/search/?api=1&query=" +
+          encodeURIComponent(b.direccion)
+        : "")
+    : b.destino;
+  const pendiente = b.modalidad === "sin_definir";
+  const titulo = pendiente
+    ? "Lugar del sorteo por definir"
+    : presencial
+      ? "Ver ubicación"
+      : "Ver sorteo en vivo";
+  const destino = enlace && URL.canParse(enlace) ? new URL(enlace) : null;
+  return !pendiente && destino?.protocol === "https:" ? (
+    <a className="boton-evento" href={enlace} target="_blank" rel="noreferrer">
+      {titulo}
+    </a>
+  ) : (
+    <>
+      <button disabled>{titulo}</button>
+      {!pendiente && (
+        <small>El organizador aún no ha publicado el enlace.</small>
+      )}
+    </>
+  );
+}
 function Tarjeta({
+  publico = false,
   b,
   muestra = false,
   qrInicial = "",
@@ -222,6 +266,7 @@ function Tarjeta({
   b: Ticket;
   muestra?: boolean;
   qrInicial?: string;
+  publico?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null),
     [qr, setQr] = useState(qrInicial);
@@ -272,10 +317,9 @@ function Tarjeta({
   if (b.estado === "anulado")
     return (
       <section>
-        <h2>
-          {b.estado_rifa === "anulada" ? "Rifa anulada" : "Boleto anulado"}
-        </h2>
-        <p>Este comprobante ya no es válido.</p>
+        <h2>BOLETO ANULADO</h2>
+        {b.estado_rifa === "anulada" && <p>Rifa anulada</p>}
+        <p>Este boleto ya no es válido para participar en el sorteo.</p>
       </section>
     );
   return (
@@ -319,10 +363,7 @@ function Tarjeta({
                 style={{
                   gridTemplateColumns:
                     "repeat(" +
-                    Math.min(
-                      numeros.length,
-                      numeros.length <= 12 ? 5 : 7,
-                    ) +
+                    Math.min(numeros.length, numeros.length <= 12 ? 5 : 7) +
                     ", minmax(0,1fr))",
                   fontSize:
                     numeros.length === 1
@@ -342,39 +383,44 @@ function Tarjeta({
             </div>
             <div className="datos-titular-boleto">
               <h3>{b.participante}</h3>
-            {b.telefono && <p>{b.telefono}</p>}
-            {b.plantilla.mostrar_lugar && b.direccion && <p>{b.direccion}</p>}
+              {b.telefono && <p>{b.telefono}</p>}
+              {b.plantilla.mostrar_lugar && b.direccion && <p>{b.direccion}</p>}
+              {b.plantilla.mostrar_lugar && b.modalidad === "sin_definir" && (
+                <p>Sin definir</p>
+              )}
               {b.plantilla.mostrar_lugar && <PlataformaBoleto b={b} />}
             </div>
             {b.plantilla.mostrar_qr && qr && (
-                <img
-                  className="qr-boleto"
-                  src={qr}
-                  alt="QR de consulta del boleto"
-                />
-              )}
+              <img
+                className="qr-boleto"
+                src={qr}
+                alt="QR de consulta del boleto"
+              />
+            )}
           </div>
           <div className="talon-boleto">
             {b.plantilla.mostrar_premio && <PremiosBoleto b={b} />}
           </div>
-
         </div>
       </VistaEscalada>
       {!muestra && (
         <div className="acciones">
           <Accion texto="Descargar PNG" ejecutar={() => exportar(false)} />
           <Accion texto="Descargar PDF" ejecutar={() => exportar(true)} />
-          <CompartirIndividual
-            key={JSON.stringify(b)}
-            b={b}
-            url={url}
-            generar={generarPNG}
-          />
-          {b.destino?.startsWith("https://") && (
+          {!publico && (
+            <CompartirIndividual
+              key={JSON.stringify(b)}
+              b={b}
+              url={url}
+              generar={generarPNG}
+            />
+          )}
+          {!publico && b.destino?.startsWith("https://") && (
             <a href={b.destino} target="_blank" rel="noreferrer">
               Ver sorteo
             </a>
           )}
+          {publico && <AccesoEvento b={b} />}
         </div>
       )}
     </section>
@@ -389,7 +435,9 @@ function CompartirIndividual({
   url: string;
   generar: () => Promise<string>;
 }) {
-  const [mensaje, editar] = useState("🎉 *¡Gracias por participar, " + b.participante + "!*"),
+  const [mensaje, editar] = useState(
+      "¡Hola, " + b.participante + "!",
+    ),
     [foto, preparar] = useState<File>(),
     [imagen, descargar] = useState(""),
     [ocupado, cargar] = useState(false),
@@ -405,29 +453,100 @@ function CompartirIndividual({
   const numeros = b.numeros ?? [b.numero];
   const filasNumeros = [];
   for (let i = 0; i < numeros.length; i += 5) {
-    filasNumeros.push(numeros.slice(i, i + 5).map(numero).join(" · "));
+    filasNumeros.push(
+      numeros
+        .slice(i, i + 5)
+        .map(numero)
+        .join(" · "),
+    );
   }
   const instante = new Date(b.fecha);
-  const dia = instante.toLocaleDateString("es-PE", {dateStyle: "full", timeZone: "America/Lima"});
-  const hora = instante.toLocaleTimeString("es-PE", {hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "America/Lima"});
+  const dia = instante.toLocaleDateString("es-PE", {
+    dateStyle: "full",
+    timeZone: "America/Lima",
+  });
+  const hora = instante.toLocaleTimeString("es-PE", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "America/Lima",
+  });
   const plataforma = plataformaDe(b);
-  const presencial = b.modalidad === "presencial" || (!plataforma && !!b.direccion);
+  const presencial =
+    b.modalidad === "presencial" || (!plataforma && !!b.direccion);
+  const estados = new Map(
+    b.estados_numeros?.map((n) => [n.numero, n.estado_numero]),
+  );
+  const grupos = [
+    [
+      "pagada",
+      "¡Gracias por participar! Tu boleto ha sido emitido correctamente y tus números ya están participando en el sorteo.",
+    ],
+    [
+      "reservado",
+      "¡Gracias por reservar! Tus números han sido reservados correctamente. Recuerda completar el pago para participar en el sorteo.",
+    ],
+    [
+      "pendiente",
+      "Tu boleto ha sido registrado correctamente. Recuerda completar el saldo pendiente para que tus números puedan participar en el sorteo.",
+    ],
+  ];
+  const avisos = grupos.flatMap(([estado, aviso]) => {
+    const incluidos = numeros.filter((n) => estados.get(n) === estado);
+    if (!incluidos.length) return [];
+    return [
+      incluidos.length === numeros.length
+        ? aviso
+        : "Números " + incluidos.map(numero).join(", ") + " · " + aviso,
+    ];
+  });
   const texto = [
     mensaje,
-    "Tu boleto ha sido emitido correctamente. ¡Ya estás participando en nuestra gran rifa! 🍀",
+    ...avisos,
     "🎟️ *DETALLES DE TU BOLETO*",
-    ["🏷️ *Rifa:* " + b.rifa, "👤 *Participante:* " + b.participante,
-      "🔢 *Números adquiridos (" + numeros.length + "):*", ...filasNumeros].join("\n"),
-    ["📅 *Fecha:* " + dia[0].toUpperCase() + dia.slice(1), "🕔 *Hora:* " + hora + " (Perú)",
-      presencial ? "📍 *Modalidad:* Presencial" : plataforma ? "📍 *Modalidad:* Virtual · " + plataforma.nombre : ""].filter(Boolean).join("\n"),
-    "📲 *CONSULTA TU BOLETO DIGITAL*\nPuedes visualizar tu boleto en el siguiente enlace:\n" + url,
-    presencial ? ["🎊 *¡ACOMPÁÑANOS EN NUESTRO GRAN SORTEO!*",
-      [b.direccion && "📍 *Lugar:* " + b.direccion, b.enlace_mapa && "🗺️ *Cómo llegar:* " + b.enlace_mapa].filter(Boolean).join("\n"),
-      "¡Te esperamos para compartir este gran momento y conocer a nuestros ganadores!"].filter(Boolean).join("\n\n")
-      : plataforma ? "🔴 *¡ACOMPÁÑANOS EN EL SORTEO EN VIVO!*\nIngresa a la transmisión el día del sorteo:\n" + b.destino : "",
+    [
+      "🏷️ *Rifa:* " + b.rifa,
+      "👤 *Participante:* " + b.participante,
+      "🔢 *Números adquiridos (" + numeros.length + "):*",
+      ...filasNumeros,
+    ].join("\n"),
+    [
+      "📅 *Fecha:* " + dia[0].toUpperCase() + dia.slice(1),
+      "🕔 *Hora:* " + hora + " (Perú)",
+      presencial
+        ? "📍 *Modalidad:* Presencial"
+        : plataforma
+          ? "📍 *Modalidad:* Virtual · " + plataforma.nombre
+          : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    "📲 *CONSULTA TU BOLETO DIGITAL*\nPuedes visualizar tu boleto en el siguiente enlace:\n" +
+      url,
+    b.modalidad === "sin_definir"
+      ? "📍 *Sin definir*\n" + lugarPendiente
+      : presencial
+        ? [
+            "🎊 *¡ACOMPÁÑANOS EN NUESTRO GRAN SORTEO!*",
+            [
+              b.direccion && "📍 *Lugar:* " + b.direccion,
+              b.enlace_mapa && "🗺️ *Cómo llegar:* " + b.enlace_mapa,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+            "¡Te esperamos para compartir este gran momento y conocer a nuestros ganadores!",
+          ]
+            .filter(Boolean)
+            .join("\n\n")
+        : plataforma
+          ? "🔴 *¡ACOMPÁÑANOS EN EL SORTEO EN VIVO!*\nIngresa a la transmisión el día del sorteo:\n" +
+            b.destino
+          : "",
     "🍀 ¡Mucha suerte y gracias por tu apoyo!",
     "─────────────────\n🎟️ *RifaPes* | Tu suerte comienza aquí.",
-  ].filter(Boolean).join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   const compatible =
     foto &&
     !!navigator.share &&
@@ -706,6 +825,7 @@ type Comprobante = {
   estado: string;
   estado_rifa: string;
   numeros: number[];
+  estados_numeros: Ticket["estados_numeros"];
   datos_emision_historicos: Ticket;
 };
 async function descargarLote(boletos: Ticket[]) {
@@ -835,7 +955,37 @@ export function Publico({
       )}
       {b ? (
         <>
-          <Tarjeta b={b} />
+          <Tarjeta b={b} publico />
+          {b.estado !== "anulado" && (
+            <>
+              <h2>¡Conoce todos los premios que puedes ganar!</h2>
+              <div className="catalogo-premios">
+                {b.premios_publicos?.map((p) => (
+                  <article key={p.orden}>
+                    {(p.imagen || p.sorpresa) && (
+                      <img
+                        loading="lazy"
+                        src={p.sorpresa ? "/regalo-sorpresa.svg" : p.imagen}
+                        alt=""
+                      />
+                    )}
+                    <div>
+                      <small>Premio {p.orden}</small>
+                      <h3>{p.nombre}</h3>
+                      {p.descripcion && <p>{p.descripcion}</p>}
+                    </div>
+                  </article>
+                ))}
+              </div>
+              {!!b.numeros_anulados?.length && (
+                <p>
+                  Boleto parcialmente anulado · Números vigentes: {b.numeros?.map(numero).join(", ")} · Números anulados: {b.numeros_anulados.map(numero).join(", ")}
+                </p>
+              )}
+              {b.modalidad === "sin_definir" && <p>{lugarPendiente}</p>}
+              {b.direccion && <p>Lugar del evento: {b.direccion}</p>}
+            </>
+          )}
           {b.estado === "emitido" && b.estado_rifa && (
             <p>
               Boleto vigente · Rifa {b.estado_rifa.replace("_", " ")}
@@ -880,7 +1030,7 @@ export function Boletos({
       const [t, c, b, contactos] = await Promise.all([
         filas<Visual>("plantilla_boleto", f),
         filas<Fila>("configuracion_transmision", f),
-        filas<Comprobante>("vw_comprobantes", f, "token_grupo"),
+        filas<Comprobante>("vw_comprobantes_operacion", f, "token_grupo"),
         filas<Persona>("persona", undefined, "id_persona"),
       ]);
       const telefonos = new Map(
@@ -933,11 +1083,13 @@ export function Boletos({
     ...x.datos_emision_historicos,
     codigo: x.token_grupo,
     numeros: x.numeros,
+    estados_numeros: x.estados_numeros,
     numero: x.numeros[0],
     estado: x.estado,
     estado_rifa: x.estado_rifa,
     modalidad: String(c?.modalidad || ""),
-    enlace_mapa: c?.modalidad === "presencial" ? String(c.enlace_mapa || "") : undefined,
+    enlace_mapa:
+      c?.modalidad === "presencial" ? String(c.enlace_mapa || "") : undefined,
     destino,
     direccion:
       c?.modalidad === "presencial" ? String(c.direccion || "") : undefined,
@@ -983,24 +1135,55 @@ export function Boletos({
             }}
           >
             <Campo titulo="Modalidad">
-              <select value={modo} onChange={(e) => modalidad(e.target.value)}>
-                {Object.keys(nombresPlataforma).map((s) => (
-                  <option key={s} value={s}>{nombresPlataforma[s]}</option>
-                ))}
+              <select
+                value={
+                  ["presencial", "sin_definir"].includes(modo)
+                    ? modo
+                    : "virtual"
+                }
+                onChange={(e) =>
+                  modalidad(
+                    e.target.value === "virtual" ? "teams" : e.target.value,
+                  )
+                }
+              >
+                <option value="sin_definir">Sin definir</option>
+                <option value="presencial">Presencial</option>
+                <option value="virtual">Virtual</option>
               </select>
             </Campo>
-            {modo === "presencial" ? (
+            {!["presencial", "sin_definir"].includes(modo) && (
+              <Campo titulo="Plataforma de transmisión">
+                <select
+                  value={modo}
+                  onChange={(e) => modalidad(e.target.value)}
+                >
+                  {["teams", "meet", "tiktok", "otro"].map((s) => (
+                    <option key={s} value={s}>
+                      {nombresPlataforma[s]}
+                    </option>
+                  ))}
+                </select>
+              </Campo>
+            )}
+            {modo === "sin_definir" ? (
+              <p>{lugarPendiente}</p>
+            ) : modo === "presencial" ? (
               <>
-              <Campo titulo="Dirección">
-                <input
-                  name="direccion"
-                  defaultValue={String(c.direccion || "")}
-                />
-              </Campo>
-              <Campo titulo="Enlace de Google Maps (opcional)">
-                <input name="mapa" type="url" placeholder="https://maps.app.goo.gl/…"
-                  defaultValue={String(c.enlace_mapa || "")} />
-              </Campo>
+                <Campo titulo="Dirección">
+                  <input
+                    name="direccion"
+                    defaultValue={String(c.direccion || "")}
+                  />
+                </Campo>
+                <Campo titulo="Enlace de Google Maps (opcional)">
+                  <input
+                    name="mapa"
+                    type="url"
+                    placeholder="https://maps.app.goo.gl/…"
+                    defaultValue={String(c.enlace_mapa || "")}
+                  />
+                </Campo>
               </>
             ) : modo === "tiktok" ? (
               <Campo titulo="Usuario o enlace de TikTok">

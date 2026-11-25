@@ -1407,8 +1407,11 @@ input {
 }
 .boleto {
   color: #fff;
-  text-shadow: -1px 0 1px #17221e, 1px 0 1px #17221e,
-    0 -1px 1px #17221e, 0 1px 1px #17221e;
+  text-shadow:
+    -1px 0 1px #17221e,
+    1px 0 1px #17221e,
+    0 -1px 1px #17221e,
+    0 1px 1px #17221e;
 }
 .boleto :is(a, p, h2, h3, small, b, strong, li, span) {
   color: inherit;
@@ -1496,4 +1499,68 @@ input {
 .talon-boleto .premios-boleto li {
   position: absolute;
   width: calc(50% - 5px);
+}
+
+.filtros-operaciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-block: 1rem;
+}
+.filtros-operaciones [aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--panel);
+}
+.catalogo-premios {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.catalogo-premios article {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+.catalogo-premios img {
+  width: clamp(42px, 10vw, 76px);
+  aspect-ratio: 1;
+  object-fit: contain;
+}
+.catalogo-premios h3,
+.catalogo-premios p {
+  margin: 0.25rem 0;
+}
+.boton-evento {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.55rem 0.9rem;
+  text-decoration: none;
+}
+@media (max-width: 390px) {
+  .catalogo-premios {
+    grid-template-columns: 1fr;
+  }
+}
+
+summary[data-operacion="Anulados"] {
+  border-inline-start: 4px solid #ad575b;
+  padding-inline-start: 10px;
+}
+summary[data-operacion="Cancelados"] {
+  border-inline-start: 4px solid #ae9159;
+  padding-inline-start: 10px;
+}
+summary[data-operacion="Ventas"] {
+  border-inline-start: 4px solid #659977;
+  padding-inline-start: 10px;
+}
+.cristal canvas {
+  position: absolute;
+  inset: 0;
 }

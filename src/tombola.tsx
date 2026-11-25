@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type CSSProperties } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { numero } from "./datos";
 
 const colores = [
@@ -11,165 +11,98 @@ const colores = [
   "#098bc0",
   "#ea8040",
 ];
-// Coordenadas relativas al diámetro del cristal. La simulación solo presenta números.
 export function Tombola({
   muestra,
   mezcla,
   salida,
+  alPintar,
 }: {
+  alPintar?: (cantidad: number) => void;
   muestra: number[];
   mezcla: boolean;
   salida?: number;
 }) {
-  const salidaRef = useRef<HTMLSpanElement>(null);
-  const esfera = useRef<HTMLDivElement>(null);
-  const numeros = muestra.slice(0, 12);
-  if (salida !== undefined && !numeros.includes(salida))
-    numeros.splice(11, 1, salida);
-  const clave = numeros.join(",");
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const anteriores = useRef(new Set<number>());
   useLayoutEffect(() => {
-    const elementos = Array.from(esfera.current!.children) as HTMLElement[];
-    const bolas = elementos.map((el, i) => ({
-      el,
-      x: 30 + (i % 4) * 14,
-      y: 57 - Math.floor(i / 4) * 13,
-      vx: Math.cos(i * 2.4) * 35,
-      vy: -34 - i * 2,
-    }));
-    const radio = 7.5,
-      limite = 49 - radio;
-    let frame = 0,
-      anterior = 0,
-      inicio = 0;
-    function paso(t: number, dt: number, aire: boolean) {
-      for (const [i, b] of bolas.entries()) {
-        b.vx += (aire ? Math.sin(t * 3 + i * 2) * 110 : 0) * dt;
-        b.vy += (aire ? Math.sin(t * 5 + i) * 85 - 25 : 130) * dt;
-        b.x += b.vx * dt;
-        b.y += b.vy * dt;
-      }
-      for (let vuelta = 0; vuelta < 3; vuelta++) {
-        for (const [i, b] of bolas.entries()) {
-          for (const c of bolas.slice(i + 1)) {
-            const dx = c.x - b.x,
-              dy = c.y - b.y,
-              d = Math.hypot(dx, dy) || 0.01;
-            if (d >= 2 * radio) continue;
-            const nx = dx / d,
-              ny = dy / d,
-              separar = (2 * radio - d) / 2;
-            b.x -= nx * separar;
-            b.y -= ny * separar;
-            c.x += nx * separar;
-            c.y += ny * separar;
-            const impulso =
-              ((b.vx - c.vx) * nx + (b.vy - c.vy) * ny) * (aire ? 0.95 : 0.55);
-            if (impulso > 0) {
-              b.vx -= impulso * nx;
-              b.vy -= impulso * ny;
-              c.vx += impulso * nx;
-              c.vy += impulso * ny;
-            }
-          }
-        }
-        for (const b of bolas) {
-          const dx = b.x - 50,
-            dy = b.y - 50,
-            d = Math.hypot(dx, dy);
-          if (d > limite) {
-            const nx = dx / d,
-              ny = dy / d;
-            b.x = 50 + nx * limite;
-            b.y = 50 + ny * limite;
-            const golpe =
-              Math.max(0, b.vx * nx + b.vy * ny) * (aire ? 1.94 : 1.12);
-            b.vx -= golpe * nx;
-            b.vy -= golpe * ny;
-          }
-        }
-      }
-    }
-    function pintar(t: number) {
-      for (const [i, b] of bolas.entries()) {
-        b.el.style.left = b.x + "%";
-        b.el.style.top = b.y + "%";
-        b.el.style.transform =
-          "translate(-50%,-50%) rotate(" +
-          (mezcla ? Math.sin(t * 3 + i) * 28 : 0) +
-          "deg)";
-      }
-    }
-    for (let i = 0; i < 170; i++) paso(0, 1 / 60, false);
-    pintar(0);
-    if (mezcla && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      bolas.forEach((b, i) => {
-        b.vy = -80 - i * 4;
-        b.vx = 45 * Math.cos(i * 2.2);
-      });
-      function mover(ms: number) {
-        if (!inicio) inicio = ms;
-        const t = (ms - inicio) / 1000,
-          dt = Math.min(0.035, (ms - (anterior || ms)) / 1000);
-        anterior = ms;
-        paso(t, dt / 2, true);
-        paso(t, dt / 2, true);
-        pintar(t);
-        frame = requestAnimationFrame(mover);
-      }
-      frame = requestAnimationFrame(mover);
-    }
-    return () => cancelAnimationFrame(frame);
-  }, [clave, mezcla]);
-  useLayoutEffect(() => {
-    const bola = esfera.current?.querySelector<HTMLElement>(".extraida"),
-      destino = salidaRef.current;
-    if (
-      !bola ||
-      !destino ||
-      matchMedia("(prefers-reduced-motion: reduce)").matches
-    )
+    const ctx = canvas.current?.getContext("2d");
+    if (!ctx) {
+      alPintar?.(0);
       return;
-    const a = bola.getBoundingClientRect(),
-      b = destino.getBoundingClientRect();
-    destino.style.setProperty("--tono", bola.style.getPropertyValue("--tono"));
-    const x = a.left + a.width / 2 - b.left - b.width / 2,
-      y = a.top + a.height / 2 - b.top - b.height / 2;
-    const animacion = destino.animate(
-      [
-        {
-          transform:
-            "translate(" +
-            x +
-            "px," +
-            y +
-            "px) scale(" +
-            a.width / b.width +
-            ")",
-        },
-        { transform: "none" },
-      ],
-      { duration: 650, easing: "cubic-bezier(.25,.65,.35,1)" },
-    );
-    return () => animacion.cancel();
-  }, [salida]);
+    }
+    const radio = Math.min(55, 320 / Math.sqrt(Math.max(1, muestra.length)));
+    const limite = 390 - radio;
+    const reducida = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const bolas = muestra.map((n, i) => {
+      // Espiral de ángulo áureo: cada número tiene una posición inicial dentro del cristal.
+      const angulo = i * Math.PI * (3 - Math.sqrt(5)),
+        distancia = limite * Math.sqrt((i + 0.5) / muestra.length);
+      return {
+        etiqueta: numero(n),
+        x: distancia * Math.cos(angulo),
+        y: distancia * Math.sin(angulo),
+        vx: 170 * Math.cos(angulo * 0.7),
+        vy: 170 * Math.sin(angulo * 0.7),
+        nueva: anteriores.current.size > 0 && !anteriores.current.has(n),
+      };
+    });
+    anteriores.current = new Set(muestra);
+    const principio = performance.now();
+    let frame = 0,
+      anterior = principio;
+    function pintar(ms: number) {
+      const t = reducida ? 1 : (ms - principio) / 1000,
+        dt = Math.min(0.032, (ms - anterior) / 1000);
+      anterior = ms;
+      ctx!.clearRect(0, 0, 800, 800);
+      for (const [i, b] of bolas.entries()) {
+        if (mezcla && !reducida) {
+          b.x += b.vx * dt;
+          b.y += b.vy * dt;
+          const d = Math.hypot(b.x, b.y);
+          if (d > limite) {
+            const nx = b.x / d,
+              ny = b.y / d,
+              impulso = 2 * Math.max(0, b.vx * nx + b.vy * ny);
+            b.x = nx * limite;
+            b.y = ny * limite;
+            b.vx -= impulso * nx;
+            b.vy -= impulso * ny;
+          }
+        }
+        const x = 400 + b.x,
+          y = 400 + (b.nueva && t < 0.5 ? b.y * t * 2 : b.y);
+        ctx!.fillStyle = colores[i % colores.length];
+        ctx!.beginPath();
+        ctx!.arc(x, y, radio, 0, Math.PI * 2);
+        ctx!.fill();
+        ctx!.fillStyle = "#fff";
+        ctx!.font = "bold " + Math.floor(radio * 0.8) + "px sans-serif";
+        ctx!.textAlign = "center";
+        ctx!.textBaseline = "middle";
+        ctx!.fillText(b.etiqueta, x, y, radio * 1.8);
+      }
+      if (!reducida && (mezcla || (t < 0.5 && bolas.some((b) => b.nueva))))
+        frame = requestAnimationFrame(pintar);
+    }
+    pintar(principio);
+    alPintar?.(bolas.length);
+    return () => cancelAnimationFrame(frame);
+  }, [muestra, mezcla, alPintar]);
   return (
-    <div className="maquina" aria-hidden="true">
-      <div className="cristal" ref={esfera}>
-        {numeros.map((n, i) => (
-          <span
-            className={"bola-color " + (salida === n ? "extraida" : "")}
-            key={n}
-            style={{ "--tono": colores[i % colores.length] } as CSSProperties}
-          >
-            {numero(n)}
-          </span>
-        ))}
+    <div className="maquina">
+      <div className="cristal">
+        <canvas
+          aria-label={muestra.length + " pelotas en la esfera"}
+          ref={canvas}
+          width="800"
+          height="800"
+          style={{ width: "100%", height: "100%" }}
+        />
       </div>
       <div className="pedestal" />
       {salida !== undefined && (
-        <span ref={salidaRef} className="salida-oficial">
-          {numero(salida)}
-        </span>
+        <span className="salida-oficial">{numero(salida)}</span>
       )}
     </div>
   );

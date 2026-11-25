@@ -1,15 +1,7 @@
 import { Tombola } from "./tombola";
 import { useState, useEffect, useRef } from "react";
 import { Accion } from "./controles";
-import {
-  db,
-  filas,
-  rpc,
-  numero,
-  type Premio,
-  type Rifa,
-  type Fila,
-} from "./datos";
+import { filas, rpc, numero, type Premio, type Rifa, type Fila } from "./datos";
 export function Sorteo({
   r,
   premios,
@@ -68,51 +60,105 @@ export function Sorteo({
     (e) => e.id_premio_rifa === p?.id_premio_rifa,
   );
   const escenario = useRef<HTMLElement>(null);
-  const [muestraInicial, previsualizar] = useState<number[]>([]);
-  useEffect(() => {
-    let vigente = true;
-    if (r.estado === "activa" && db)
-      void db
-        .from("vw_numeros_por_persona")
-        .select("numero")
-        .eq("id_rifa", r.id_rifa)
-        .eq("estado", "pagada")
-        .order("numero")
-        .limit(12)
-        .then(({ data }) => {
-          if (vigente) previsualizar((data ?? []).map((n) => Number(n.numero)));
-        });
-    return () => {
-      vigente = false;
-    };
-  }, [r.id_rifa, r.estado, version]);
   const [salida, extraida] = useState<number>();
   const [mezclando, animar] = useState(false),
     [mostrarCelebracion, celebrar] = useState("");
   const [resumen, candidatos] = useState<{
+    estado_rifa: string;
+    extracciones: number;
+    ultimo_premio?: string;
+    premioConsultado?: string;
+    inscritos: number;
+    vendidos: number;
+    abiertas: boolean;
     numeros: number;
     participantes: number;
     muestra: number[] | null;
   }>();
   const premioId = p?.id_premio_rifa;
+  const [congelados, fijar] = useState<number[]>([]);
+  const [aviso, avisar] = useState("");
+  const vendidosPrevios = useRef<number | undefined>(undefined);
+  const solicitud = useRef<{ clave: string; id: string } | undefined>(
+    undefined,
+  );
+  const refrescar = useRef(recargar);
   useEffect(() => {
-    let vigente = true;
-    candidatos(undefined);
-    if (premioId && r.estado === "en_sorteo")
-      rpc<NonNullable<typeof resumen>>("resumen_candidatos", {
-        p_rifa: r.id_rifa,
-        p_premio: premioId,
-      })
-        .then((x) => {
-          if (vigente) candidatos(x);
-        })
-        .catch((e) => {
-          if (vigente) error(e.message);
+    refrescar.current = recargar;
+  }, [recargar]);
+  useEffect(() => {
+    let vivo = true,
+      timer: ReturnType<typeof setTimeout>;
+    if (!listo || mezclando || !["activa", "en_sorteo"].includes(r.estado))
+      return;
+    async function actualizar() {
+      try {
+        const x = await rpc<NonNullable<typeof resumen>>("resumen_candidatos", {
+          p_rifa: r.id_rifa,
+          p_premio: premioId ?? null,
         });
+        if (vivo) {
+          if (
+            x.estado_rifa !== r.estado ||
+            x.extracciones !== extracciones.length
+          ) {
+            if (x.ultimo_premio && x.extracciones > extracciones.length) {
+              seleccionar(x.ultimo_premio);
+              sessionStorage.setItem(clave, x.ultimo_premio);
+            }
+            candidatos(undefined);
+            refrescar.current();
+            return;
+          }
+          x.premioConsultado = premioId;
+          const nuevos = x.inscritos - (vendidosPrevios.current ?? x.inscritos);
+          if (nuevos > 0)
+            avisar("¡Se incorporaron " + nuevos + " nuevos números al sorteo!");
+          vendidosPrevios.current = x.inscritos;
+          candidatos((anterior) =>
+            anterior && JSON.stringify(anterior) === JSON.stringify(x)
+              ? anterior
+              : x,
+          );
+        }
+      } catch (e) {
+        if (vivo) {
+          candidatos(undefined);
+          error((e as Error).message);
+        }
+      }
+      if (vivo) timer = setTimeout(actualizar, 1800);
+    }
+    void actualizar();
     return () => {
-      vigente = false;
+      vivo = false;
+      clearTimeout(timer);
     };
-  }, [premioId, r.id_rifa, r.estado, version]);
+  }, [
+    premioId,
+    r.id_rifa,
+    r.estado,
+    version,
+    mezclando,
+    listo,
+    extracciones.length,
+    clave,
+  ]);
+  useEffect(() => {
+    if (!aviso) return;
+    const reloj = setTimeout(() => avisar(""), 4500);
+    return () => clearTimeout(reloj);
+  }, [aviso]);
+  const numerosEsfera = mezclando ? congelados : (resumen?.muestra ?? []);
+  const [pelotas, contarPelotas] = useState(0);
+  const consistente =
+    !!resumen &&
+    resumen.premioConsultado === premioId &&
+    resumen.estado_rifa === r.estado &&
+    resumen.numeros > 0 &&
+    resumen.numeros === pelotas &&
+    resumen.numeros === resumen.muestra?.length &&
+    new Set(resumen.muestra).size === resumen.numeros;
   const ultimo = pasos.at(-1),
     orden = pasos.length + 1;
   const valor = (e: Fila) => numero(Number(e.numero));
@@ -137,16 +183,21 @@ export function Sorteo({
         {r.estado === "activa" ? (
           <>
             <h2>Iniciar sorteo</h2>
-            <Tombola muestra={muestraInicial} mezcla={false} />
+            <Tombola muestra={resumen?.muestra ?? []} mezcla={false} />
             <p>
-              Al iniciar se cierran las ventas y se fijan los premios y los
-              números pagados.
+              {r.permitir_ventas_sorteo
+                ? "Las ventas seguirán abiertas. Los nuevos números participan al completar su pago."
+                : "Al iniciar se cierran las ventas. Participan los números pagados."}
             </p>
             {listo && (
               <Accion
                 texto="Iniciar sorteo oficial"
                 ejecutar={async () => {
-                  if (!confirm("¿Cerrar ventas e iniciar el sorteo oficial?"))
+                  if (
+                    !confirm(
+                      "¿Iniciar el sorteo oficial con la configuración actual?",
+                    )
+                  )
                     throw Error("El sorteo sigue pendiente.");
                   await rpc("iniciar_sorteo", { p_rifa: r.id_rifa });
                   recargar();
@@ -183,12 +234,29 @@ export function Sorteo({
             </p>
             {!ganador && resumen && (
               <p>
-                {resumen.numeros} números habilitados · {resumen.participantes}{" "}
-                participantes
+                {resumen.vendidos} vendidos vigentes · {pelotas} pelotas en el
+                sorteo · {mezclando ? congelados.length : resumen.numeros}{" "}
+                números habilitados · {resumen.participantes} participantes
               </p>
             )}
+            <p role="status">{aviso}</p>
+            <p>{resumen?.abiertas ? "Ventas abiertas" : "Ventas cerradas"}</p>
+            {r.permitir_ventas_sorteo && pendiente && resumen && (
+              <Accion
+                texto={resumen.abiertas ? "Cerrar ventas" : "Reabrir ventas"}
+                ejecutar={async () => {
+                  if (!confirm("¿Cambiar el estado de las ventas?")) return;
+                  await rpc("cambiar_apertura_ventas", {
+                    p_rifa: r.id_rifa,
+                    p_abrir: !resumen.abiertas,
+                  });
+                  recargar();
+                }}
+              />
+            )}
             <Tombola
-              muestra={resumen?.muestra ?? []}
+              alPintar={contarPelotas}
+              muestra={numerosEsfera}
               mezcla={mezclando}
               salida={mezclando ? salida : undefined}
             />
@@ -259,21 +327,34 @@ export function Sorteo({
                 )}
 
                 <Accion
+                  deshabilitado={!consistente || mezclando}
                   ayuda="Sacar número"
                   texto={orden === 1 ? "Sortear" : "Sacar siguiente número"}
                   ejecutar={async () => {
                     mostrar(p.id_premio_rifa);
                     extraida(undefined);
+                    fijar(resumen?.muestra ?? []);
                     animar(true);
                     try {
-                      const resultado = await rpc<Fila>(
-                        "extraer_numero_sorteo",
-                        {
-                          p_rifa: r.id_rifa,
-                          p_premio: p.id_premio_rifa,
-                          p_orden: orden,
-                          p_solicitud: crypto.randomUUID(),
-                        },
+                      const claveSolicitud = p.id_premio_rifa + ":" + orden;
+                      if (solicitud.current?.clave !== claveSolicitud)
+                        solicitud.current = {
+                          clave: claveSolicitud,
+                          id: crypto.randomUUID(),
+                        };
+                      const resultado = await rpc<
+                        Fila & { numeros_elegibles?: number[] }
+                      >("extraer_numero_sorteo", {
+                        p_rifa: r.id_rifa,
+                        p_premio: p.id_premio_rifa,
+                        p_orden: orden,
+                        p_solicitud: solicitud.current.id,
+                        p_elegibles: resumen?.muestra,
+                      });
+                      const oficiales = resultado.numeros_elegibles;
+                      if (oficiales) fijar(previos =>
+                        previos.length === oficiales.length && previos.every((n, i) => n === oficiales[i])
+                          ? previos : oficiales,
                       );
                       const reducida = matchMedia(
                         "(prefers-reduced-motion: reduce)",

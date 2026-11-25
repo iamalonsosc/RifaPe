@@ -87,6 +87,196 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
           },
         );
       }
+      if (file.startsWith("20261124000400")) {
+        await t.test(
+          "Actualización 15 a 16 con reservas, ingresos y sorteos históricos",
+          async () => {
+            await q("begin");
+            try {
+              await q("set local role authenticated");
+              await q("select set_config('request.jwt.claim.sub',$1,true)", [
+                admin,
+              ]);
+              const persona = await uno(
+                "select guardar_persona('Cliente histórico')",
+              );
+              const crear = () =>
+                uno("select guardar_rifa('Histórica',10,12,now(),'numero')");
+              const r = await crear();
+              const numeros = async (id) =>
+                (
+                  await q(
+                    "select id_numero_rifa id from numero_rifa where id_rifa=$1 order by numero",
+                    [id],
+                  )
+                ).map((n) => n.id);
+              const ns = await numeros(r);
+              const vender = (id, lista) =>
+                uno("select registrar_venta($1,$2,$3)", [id, persona, lista]);
+              const pagar = (v, m) =>
+                q("select confirmar_pago($1,$2,'efectivo')", [v, m]);
+              const promocion = (precio) =>
+                q(
+                  "select guardar_rifa_ofertas('Histórica',10,12,now(),'numero',null,null,$1,$2)",
+                  [r, JSON.stringify([{ cantidad: 3, precio, activa: true }])],
+                );
+              await promocion(25);
+              const reserva = await uno(
+                "select reservar_numeros($1,$2,$3,now()+interval '3 days')",
+                [r, persona, ns.slice(0, 3)],
+              );
+              await q("select emitir_boletos_reserva($1)", [reserva]);
+              await promocion(27);
+              const cotizar = () =>
+                uno("select cotizar_reserva($1)", [reserva]);
+              const anterior = await cotizar();
+              assert.equal(anterior.total, 27);
+              const parcial = await vender(r, ns.slice(3, 5));
+              await pagar(parcial, 20);
+              const retirar = await uno(
+                "select id_detalle_venta from detalle_venta where id_venta=$1 order by id_detalle_venta limit 1",
+                [parcial],
+              );
+              await q(
+                "select ajustar_numeros_venta($1,array[$2::uuid],true,'Retiro histórico',10,20)",
+                [parcial, retirar],
+              );
+              const total = await vender(r, [ns[5]]);
+              await pagar(total, 10);
+              await q("select cancelar_venta($1,'Baja histórica')", [total]);
+              for (const terminar of [true, false]) {
+                const id = await crear();
+                const v = await vender(id, (await numeros(id)).slice(0, 2));
+                await pagar(v, 20);
+                await q("select guardar_premio($1,'Principal',1,1,false)", [
+                  id,
+                ]);
+                const premio = await uno(
+                  "select id_premio_rifa from premio_rifa where id_rifa=$1",
+                  [id],
+                );
+                if (!terminar)
+                  await q("select guardar_premio($1,'Segundo',2,1,false)", [
+                    id,
+                  ]);
+                await q("select iniciar_sorteo($1)", [id]);
+                await q("select extraer_numero_sorteo($1,$2,1,$3)", [
+                  id,
+                  premio,
+                  randomUUID(),
+                ]);
+                if (terminar) await q("select finalizar_sorteo($1)", [id]);
+              }
+              const historial = async () =>
+                Promise.all([
+                  q(
+                    "select id_reserva,estado,precio_unitario,fecha_vencimiento from reserva order by id_reserva",
+                  ),
+                  q(
+                    "select id_venta,estado,total from venta order by id_venta",
+                  ),
+                  q("select * from pago order by id_pago"),
+                  q("select * from devolucion order by id_devolucion"),
+                  q("select id_rifa,estado from rifa order by id_rifa"),
+                  q(
+                    "select * from vw_historial_ganadores order by id_rifa,orden_sorteo",
+                  ),
+                  q(
+                    "select id_venta,cobro_vigente(id_venta) from venta order by id_venta",
+                  ),
+                ]);
+              const previo = await historial();
+              const recaudacion = () =>
+                uno(
+                  "select recaudacion from vw_resumen_rifa where id_rifa=$1",
+                  [r],
+                );
+              assert.equal(Number(await recaudacion()), 30);
+              const tokens = (
+                await q(
+                  "select token_publico token from vw_boletos_rifa union select token_grupo from vw_comprobantes order by token",
+                )
+              ).map((b) => b.token);
+              async function comprobarEnlaces() {
+                await q("set local role service_role");
+                const datos = [];
+                for (const token of tokens) {
+                  const b = await uno("select consultar_boleto($1)", [token]);
+                  datos.push([b.estado, b.codigo, b.numeros]);
+                }
+                await q("set local role authenticated");
+                return datos;
+              }
+              const enlaces = await comprobarEnlaces();
+              await q("reset role");
+              await q(
+                migracion.replace(/^begin;/i, "").replace(/commit;\s*$/i, ""),
+              );
+              await q("set local role authenticated");
+              assert.deepEqual(await historial(), previo);
+              assert.equal(Number(await recaudacion()), 10);
+              assert.deepEqual(await comprobarEnlaces(), enlaces);
+              assert.deepEqual(await cotizar(), anterior);
+              await promocion(28);
+              assert.equal((await cotizar()).total, 27);
+              assert.equal(
+                Number(
+                  await uno(
+                    "select saldo from vw_historial_reservas where id_reserva=$1",
+                    [reserva],
+                  ),
+                ),
+                27,
+              );
+              assert.equal(
+                await uno(
+                  "select tarifa_heredada from reserva where id_reserva=$1",
+                  [reserva],
+                ),
+                true,
+              );
+              assert.equal(
+                (
+                  await uno(
+                    "select numeros_retirados from vw_anulaciones_parciales where id_venta=$1",
+                    [parcial],
+                  )
+                ).length,
+                1,
+              );
+              assert.equal(
+                await uno(
+                  "select estado_antes_anulacion from venta where id_venta=$1",
+                  [total],
+                ),
+                "pagada",
+              );
+              const nueva = await uno(
+                "select reservar_numeros($1,$2,$3,null)",
+                [r, persona, ns.slice(6, 9)],
+              );
+              await promocion(25);
+              assert.equal(
+                Number(
+                  await uno(
+                    "select saldo from vw_historial_reservas where id_reserva=$1",
+                    [nueva],
+                  ),
+                ),
+                28,
+              );
+              await q("select registrar_venta_cotizada($1,$2,$3,28,$4)", [
+                r,
+                persona,
+                ns.slice(6, 9),
+                nueva,
+              ]);
+            } finally {
+              await q("rollback");
+            }
+          },
+        );
+      }
       await q(migracion);
     }
     assert.equal(
@@ -105,13 +295,24 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
     const r = await crear("numero");
     await t.test("Mapa presencial opcional y cambio de modalidad", async () => {
       const mapa = "https://maps.app.goo.gl/ejemplo";
-      const guardar = "select guardar_transmision($1,'presencial',null,null,'Lima',$2)";
+      const guardar =
+        "select guardar_transmision($1,'presencial',null,null,'Lima',$2)";
       await q(guardar, [r, mapa]);
-      const leer = () => uno("select enlace_mapa from configuracion_transmision where id_rifa=$1", [r]);
+      const leer = () =>
+        uno(
+          "select enlace_mapa from configuracion_transmision where id_rifa=$1",
+          [r],
+        );
       assert.equal(await leer(), mapa);
-      await assert.rejects(q(guardar, [r, "https://maps.app.goo.gl.ejemplo.com/a"]), /Google Maps/);
+      await assert.rejects(
+        q(guardar, [r, "https://maps.app.goo.gl.ejemplo.com/a"]),
+        /Google Maps/,
+      );
       assert.equal(await leer(), mapa);
-      await q("select guardar_transmision($1,'meet',null,'https://meet.google.com/abc',null)", [r]);
+      await q(
+        "select guardar_transmision($1,'meet',null,'https://meet.google.com/abc',null)",
+        [r],
+      );
       assert.equal(await leer(), null);
       await q(guardar, [r, null]);
     });
@@ -388,7 +589,17 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
           ]);
           assert.equal(resumen.numeros, 1000 - i);
           assert.equal(resumen.participantes, 1000 - i);
-          assert.equal(resumen.muestra.length, 12);
+          assert.equal(resumen.muestra.length, 1000 - i);
+          assert.equal(
+            await uno("select ventas_abiertas from rifa where id_rifa=$1", [
+              id,
+            ]),
+            false,
+          );
+          await assert.rejects(
+            q("select registrar_venta($1,$2,array[]::uuid[])", [id, persona]),
+            /Ventas cerradas/,
+          );
           const args = [id, p.id_premio_rifa, 1, randomUUID()];
           assert.equal(
             (
@@ -896,6 +1107,204 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
           20,
         );
         await assert.rejects(q("select anular_rifa($1,'Terminada')", [r]));
+      },
+    );
+    await t.test(
+      "Ventas en vivo, reserva indefinida, precio y dos conexiones durante la extracción",
+      async () => {
+        const id = await uno(
+          "select guardar_rifa('En vivo',10,90,now(),'numero')",
+        );
+        const personaViva = await uno(
+          "select guardar_persona('Participante en vivo')",
+        );
+        const ns = (
+          await q(
+            "select id_numero_rifa from numero_rifa where id_rifa=$1 order by numero",
+            [id],
+          )
+        ).map((n) => n.id_numero_rifa);
+        const vender = (ids, reserva = null) =>
+          uno("select registrar_venta($1,$2,$3,$4)", [
+            id,
+            personaViva,
+            ids,
+            reserva,
+          ]);
+        const reserva = await uno("select reservar_numeros($1,$2,$3,null)", [
+          id,
+          personaViva,
+          [ns[62]],
+        ]);
+        await q("reset role");
+        await q("select vencer_reservas()");
+        await q("set role authenticated");
+        assert.equal(
+          await uno("select estado from reserva where id_reserva=$1", [
+            reserva,
+          ]),
+          "activa",
+        );
+        await assert.rejects(
+          q("select reservar_numeros($1,$2,$3,now()-interval '1 minute')", [
+            id,
+            personaViva,
+            [ns[63]],
+          ]),
+          /futuro/,
+        );
+        await pago(await vender(ns.slice(0, 62)), 620);
+        for (let i = 1; i <= 2; i++)
+          await q("select guardar_premio($1,'Premio '||$2::int,$2,1,false)", [
+            id,
+            i,
+          ]);
+        const premios = (
+          await q(
+            "select id_premio_rifa from premio_rifa where id_rifa=$1 order by orden_sorteo",
+            [id],
+          )
+        ).map((p) => p.id_premio_rifa);
+        await q("select configurar_ventas_sorteo($1,true,5)", [id]);
+        await q("select iniciar_sorteo($1)", [id]);
+        await q("select cambiar_apertura_ventas($1,false)", [id]);
+        await assert.rejects(vender([ns[63]]), /cerradas/);
+        await q("select cambiar_apertura_ventas($1,true)", [id]);
+        const convertida = await vender([ns[62]], reserva);
+        assert.equal(
+          Number(
+            await uno("select total from venta where id_venta=$1", [
+              convertida,
+            ]),
+          ),
+          10,
+        );
+        const posterior = await vender([ns[63]]);
+        assert.equal(
+          Number(
+            await uno("select total from venta where id_venta=$1", [posterior]),
+          ),
+          5,
+        );
+        const candidatos = (
+          await uno("select resumen_candidatos($1,$2)", [id, premios[0]])
+        ).muestra;
+        assert.equal(candidatos.length, 62);
+        await assert.rejects(
+          q("select extraer_numero_sorteo($1,$2,1,$3,array[1])", [
+            id,
+            premios[0],
+            randomUUID(),
+          ]),
+          /cambiaron/,
+        );
+        await q("begin");
+        let abono;
+        try {
+          const e = (
+            await q("select * from extraer_numero_sorteo($1,$2,1,$3,$4)", [
+              id,
+              premios[0],
+              randomUUID(),
+              candidatos,
+            ])
+          )[0];
+          abono = otra.query("select confirmar_pago($1,5,'yape')", [posterior]);
+          assert.deepEqual(e.numeros_elegibles, candidatos);
+          await q("commit");
+        } catch (error) {
+          await q("rollback");
+          throw error;
+        }
+        await abono;
+        const siguientes = (
+          await uno("select resumen_candidatos($1,$2)", [id, premios[1]])
+        ).muestra;
+        assert.ok(siguientes.includes(64));
+        assert.ok(!siguientes.includes(63));
+        assert.equal(siguientes.length, 62);
+        await q("select extraer_numero_sorteo($1,$2,1,$3,$4)", [
+          id,
+          premios[1],
+          randomUUID(),
+          siguientes,
+        ]);
+        await assert.rejects(vender([ns[64]]), /cerradas/);
+        await assert.rejects(
+          q("select cambiar_apertura_ventas($1,true)", [id]),
+          /admite/,
+        );
+        await q("select finalizar_sorteo($1)", [id]);
+        assert.equal(
+          await uno("select ventas_abiertas from rifa where id_rifa=$1", [id]),
+          false,
+        );
+      },
+    );
+    await t.test(
+      "Un mismo token publica los 25 premios, protege sorpresas y refleja cambios de lugar",
+      async () => {
+        const id = await crear("numero");
+        for (let i = 1; i <= 25; i++)
+          await q("select guardar_premio($1,'Secreto '||$2::int,$2,1,$2=1)", [
+            id,
+            i,
+          ]);
+        const ids = (
+          await q(
+            "select id_numero_rifa from numero_rifa where id_rifa=$1 order by numero limit 2",
+            [id],
+          )
+        ).map((n) => n.id_numero_rifa);
+        const venta = await vender(ids, id);
+        await pago(venta, 20);
+        const token = await uno(
+          "select token_grupo from vw_comprobantes where id_rifa=$1",
+          [id],
+        );
+        async function consultar() {
+          await q("reset role");
+          await q("set role service_role");
+          try {
+            return await uno("select consultar_boleto($1)", [token]);
+          } finally {
+            await q("reset role");
+            await q("set role authenticated");
+          }
+        }
+        for (const modo of ["sin_definir", "meet", "presencial"]) {
+          await q("select guardar_transmision($1,$2,null,$3,$4,$5)", [
+            id,
+            modo,
+            modo === "meet" ? "https://meet.google.com/abc" : null,
+            modo === "presencial" ? "Av. Lima" : null,
+            null,
+          ]);
+          const datos = await consultar();
+          assert.equal(datos.modalidad, modo);
+          assert.equal(datos.premios_publicos.length, 25);
+          assert.equal(datos.premios_publicos[0].nombre, "Premio sorpresa");
+          assert.equal(datos.premios_publicos[0].imagen, null);
+          assert.equal(datos.telefono, undefined);
+        }
+        await q("select cancelar_venta($1,'Solicitud del titular')", [venta]);
+        assert.equal((await consultar()).estado, "anulado");
+        assert.equal(
+          await uno(
+            "select estado_antes_anulacion from venta where id_venta=$1",
+            [venta],
+          ),
+          "pagada",
+        );
+        assert.equal(
+          Number(
+            await uno(
+              "select recaudacion from vw_resumen_rifa where id_rifa=$1",
+              [id],
+            ),
+          ),
+          0,
+        );
       },
     );
     await t.test("RLS y privilegios", async () => {

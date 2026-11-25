@@ -15,7 +15,7 @@ const explicaciones = {
   Abonar:
     "Registra el importe recibido. Cada abono conserva su fecha, medio y referencia hasta completar el total.",
   Reservar:
-    "Separa los números hasta la fecha indicada. Convierte la reserva en venta para registrar un abono.",
+    "Separa los números sin vencimiento o hasta la fecha y hora que elijas. Convierte la reserva en venta para registrar un abono.",
   Emitir:
     "Genera un boleto por número. Conserva su QR aunque se abone después. Para participar en el sorteo la venta debe estar pagada.",
   Cancelar:

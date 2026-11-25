@@ -12,6 +12,7 @@ export type DatosResumen = {
   total: number;
   cobrado: number;
   cancelada: boolean;
+  anulada?: boolean;
   identidad: string;
   cantidad: number;
   movimientos: Fila[];
@@ -20,6 +21,7 @@ export function ResumenPagos({
   total,
   cobrado,
   cancelada,
+  anulada,
   identidad,
   cantidad,
   movimientos,
@@ -80,7 +82,9 @@ export function ResumenPagos({
           <Clock size={15} />
         )}{" "}
         {cancelada
-          ? "Venta cancelada"
+          ? anulada
+            ? "Venta anulada"
+            : "Venta cancelada"
           : cobrado === total
             ? "Pagado completamente"
             : cobrado
