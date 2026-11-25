@@ -3,3 +3,6 @@ project_id = "rifapes"
 enable_signup = false
 [functions.consultar-boleto]
 verify_jwt = false
+
+[functions.consultar-disponibilidad]
+verify_jwt = false

@@ -4,6 +4,7 @@ Orden de más reciente a más antiguo. Los hashes identifican commits del reposi
 
 | Referencia | Cambios identificados |
 |---|---|
+| 25 de noviembre de 2026 · migración 18 local | Disponibilidad pública opcional por rifa, filtros, ocupación, actualización en pestañas visibles y catálogo completo compartido con el boleto. |
 | 25 de noviembre de 2026 · migración 17 local | Opción de participación con saldo por rifa, reservas vigentes y titular fijado en cada extracción. La configuración, la vista previa y WhatsApp reflejan la regla. Guía de mantenimiento en PDF. |
 | Correcciones locales de la migración 16 | Cotización de reservas en el historial, mensajes por estado de pago, boletos parcialmente anulados y seguimiento de extracciones entre pantallas. |
 | Trabajo local sobre `4b99054`, migración 16 | Historial de operaciones por estado, reservas indefinidas, trazabilidad de anulaciones y modalidad «Sin definir». Catálogo público completo, esfera sin el límite visual de 12 y ventas opcionales durante el evento con candidatos registrados por extracción. |
@@ -13,6 +14,8 @@ Orden de más reciente a más antiguo. Los hashes identifican commits del reposi
 | `56e9dc9`, migraciones 1–10 | Base de rifas, participantes, reservas, ventas, abonos, resumen financiero, sorteos, boletos públicos, imágenes y edición de plantillas. |
 
 ## Evidencia de verificación
+
+Para la migración 18 pasaron 24 pruebas de Node sobre PostgreSQL temporal (incluida la contenedora) y seis recorridos en Edge con Supabase simulado. Se probaron catálogos de 25 y 50 premios, aislamiento, revocación, inventario, pérdida de conexión y persistencia de filtros durante el refresco. ESLint y la compilación finalizaron correctamente. La integración en el dominio de destino queda pendiente.
 
 El 25 de noviembre pasaron 23 pruebas de Node sobre PostgreSQL temporal (incluida la contenedora), cinco recorridos en Edge con Supabase simulado, ESLint y la compilación. Se comprobó el switch en ambas posiciones, la exclusión de bajas y vencimientos, la conservación del ganador tras vencer su reserva, la regla por persona y la incorporación de ventas en vivo sin duplicar números.
 

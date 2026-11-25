@@ -36,6 +36,8 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   let usuarioTikTok = "";
   let asignacion = "";
   let incluir = false;
+  let enlaceActivo = false, mostrarPremios = true;
+  let tokenDisponibilidad = usuario;
   let creada = false;
   let abonado = 0;
   let iniciado = false,
@@ -62,6 +64,13 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
     if (ruta.endsWith("/configurar_participacion")) {
       expect(route.request().postDataJSON().p_rifa).toBe(rifaid);
       incluir = route.request().postDataJSON().p_incluir;
+    }
+    if (ruta.endsWith("/configurar_disponibilidad")) {
+      const cambio = route.request().postDataJSON();
+      expect(cambio.p_rifa).toBe(rifaid);
+      enlaceActivo = cambio.p_habilitada ?? enlaceActivo;
+      mostrarPremios = cambio.p_premios ?? mostrarPremios;
+      if (cambio.p_regenerar) tokenDisponibilidad = rifaid;
     }
     if (ruta.endsWith("/iniciar_sorteo")) iniciado = true;
     if (ruta.endsWith("/resumen_candidatos"))
@@ -300,6 +309,10 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
         {
           id_rifa: rifaid,
           incluir_numeros_sin_pagar: incluir,
+          disponibilidad_habilitada: enlaceActivo,
+          mostrar_premios_publicos: mostrarPremios,
+          mostrar_foto_publica: true, mostrar_precio_publico: true, mostrar_fecha_publica: true,
+          token_disponibilidad: tokenDisponibilidad,
           nombre: "Rifa de prueba",
           precio_numero: 5,
           cantidad_numeros: 50,
@@ -344,6 +357,27 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   ).toBeVisible();
   await page.getByRole("button", { name: "Configuración", exact: true }).click();
   const opcion = page.getByRole("switch", { name: "Incluir Números sin pagar" });
+  await page.getByLabel("Habilitar enlace público").click();
+  await expect(page.getByLabel("Habilitar enlace público")).toBeChecked();
+  await expect(page.getByRole("link",{name:"Vista previa"})).toHaveAttribute("href",new RegExp("/disponibilidad/"+usuario+"$"));
+  const compartir = page.getByRole("link",{name:"Compartir por WhatsApp"});
+  await expect(compartir).toHaveAttribute("href",/premios/);
+  await page.getByLabel("Mostrar premios",{exact:true}).click();
+  await expect(page.getByLabel("Mostrar premios",{exact:true})).not.toBeChecked();
+  await expect(compartir).not.toHaveAttribute("href",/premios/);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", {name:"Copiar enlace"}).click();
+  await expect(page.getByRole("status").filter({hasText:"Enlace copiado."})).toBeVisible();
+  expect(await page.evaluate(()=>navigator.clipboard.readText())).toContain("/disponibilidad/"+usuario);
+  const regenerar = page.getByRole("button", {name:"Regenerar enlace"});
+  page.once("dialog", dialog => dialog.dismiss());
+  await regenerar.click();
+  expect(tokenDisponibilidad).toBe(usuario);
+  page.once("dialog", dialog => dialog.accept());
+  await regenerar.click();
+  await expect(page.getByRole("link",{name:"Vista previa"})).toHaveAttribute("href",new RegExp("/disponibilidad/"+rifaid+"$"));
+  await page.getByLabel("Habilitar enlace público").click();
+  await expect(page.getByRole("link",{name:"Vista previa"})).toHaveCount(0);
   await expect(opcion).not.toBeChecked();
   await opcion.check();
   await page.getByRole("button", { name: "Guardar participación" }).click();

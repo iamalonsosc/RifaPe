@@ -1,3 +1,4 @@
+import { Disponibilidad } from './disponibilidad';
 import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
 import {
@@ -380,6 +381,7 @@ function Inicio() {
   );
 }
 const ruta = location.pathname.match(/^\/(boleto|rifa)\/([^/]+)\/?$/);
+const disponibilidad = location.pathname.match(/^\/disponibilidad(?:\/(.*?))?\/?$/);
 createRoot(document.getElementById("root")!).render(
-  ruta ? <Publico token={ruta[2]} esRifa={ruta[1] === "rifa"} /> : <Inicio />,
+  disponibilidad ? <Disponibilidad token={disponibilidad[1] ?? ""} /> : ruta ? <Publico token={ruta[2]} esRifa={ruta[1] === "rifa"} /> : <Inicio />,
 );

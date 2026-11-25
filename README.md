@@ -1,6 +1,6 @@
 # RifaPes 1.0
 
-Aplicación privada para hasta dos administradoras, cada una con sus propias rifas. Cada rifa tiene participantes, premios, reservas, ventas en soles, pagos manuales y un sorteo oficial. Cada número conserva su registro individual y cada participante recibe un comprobante agrupado por rifa. La consulta pública funciona en `/boleto/:token`.
+Aplicación privada para hasta dos administradoras, cada una con sus propias rifas. Cada rifa tiene participantes, premios, reservas, ventas en soles, pagos manuales y un sorteo oficial. Cada número conserva su registro individual y cada participante recibe un comprobante agrupado por rifa. Los boletos se consultan en `/boleto/:token`. La disponibilidad se comparte en `/disponibilidad/:token`.
 
 ## 1. Preparar Supabase
 
@@ -27,8 +27,9 @@ En **SQL Editor → New query**, pega y ejecuta **un archivo completo a la vez**
 | 15 | 20261124000300_ubicacion_presencial.sql | Ubicación opcional de Google Maps para el mensaje presencial |
 | 16 | 20261124000400_operaciones_en_vivo.sql | Reservas opcionales, anulación trazable, catálogo público y ventas durante el sorteo |
 | 17 | 20261125000100_participacion_sin_pago.sql | Participación de ventas con saldo y reservas vigentes por rifa |
+| 18 | 20261125000200_disponibilidad_publica.sql | Disponibilidad pública por rifa y catálogo compartido |
 
-Si ya aplicaste la migración 16, ejecuta solamente la 17. Desde la versión 15 aplica la 16 y luego la 17. En instalaciones anteriores aplica las pendientes en orden. En las rifas anteriores se seleccionan inicialmente hasta cinco premios según el orden del sorteo. En rifas activas puedes cambiar esa selección desde **Premios**. Al mover un destacado a una prioridad ocupada, ambos intercambian sus posiciones en el boleto.
+Aplica las migraciones pendientes en orden hasta la 18. En las rifas anteriores se seleccionan inicialmente hasta cinco premios según el orden del sorteo. En rifas activas puedes cambiar esa selección desde **Premios**. Al mover un destacado a una prioridad ocupada, ambos intercambian sus posiciones en el boleto.
 
 Para WhatsApp abre un boleto, personaliza el mensaje y prepara la imagen. El selector del dispositivo permite elegir WhatsApp si admite archivos. También puedes descargar el PNG y adjuntarlo al mensaje preparado.
 
@@ -48,7 +49,7 @@ Opcionalmente, en un proyecto de desarrollo, `supabase/desarrollo/semilla.sql` c
 
 ## 3. Habilitar la consulta pública
 
-Despliega **consultar-boleto** desde `supabase/functions/consultar-boleto/index.ts`. El código usa Deno y la clave interna que Supabase proporciona a las funciones. El navegador solo necesita la clave pública.
+Despliega **consultar-boleto** y **consultar-disponibilidad** desde la carpeta del proyecto para incluir el módulo de `supabase/functions/_shared/`. El código usa Deno y la clave interna que Supabase proporciona a las funciones. El navegador solo necesita la clave pública.
 
 Con Supabase CLI instalada, desde la carpeta del proyecto:
 
@@ -57,11 +58,12 @@ supabase login
 supabase link --project-ref TU_PROJECT_REF
 supabase secrets set ORIGEN_APLICACION=https://TU-SITIO.netlify.app
 supabase functions deploy consultar-boleto --no-verify-jwt
+supabase functions deploy consultar-disponibilidad --no-verify-jwt
 ```
 
-También puedes crear la Edge Function con ese nombre desde el panel, pegar el contenido del archivo y desactivar la verificación JWT para **esa función**. Configura el secreto `ORIGEN_APLICACION` con el origen exacto, sin barra final. Para pruebas locales de la página pública usa `http://localhost:5173` como origen en un proyecto de desarrollo.
+Configura el secreto `ORIGEN_APLICACION` con el origen exacto, sin barra final. Para pruebas locales de la página pública usa `http://localhost:5173` como origen en un proyecto de desarrollo.
 
-La función exige un UUID, aplica un límite de 60 consultas por minuto y por clave de origen, y pide al servidor exclusivamente el boleto correspondiente. Comprueba el comportamiento del encabezado del proxy en el despliegue. Si el proxy agrupa varias conexiones bajo una IP, compartirán el límite. El boleto conserva los datos históricos de emisión y se presenta con la plantilla vigente de la rifa. El destino de transmisión se consulta en el momento. Los boletos anulados solo muestran su estado.
+Las dos funciones validan el UUID y comparten un límite de 60 consultas por minuto y por clave de origen. Cada una llama exclusivamente a su propia consulta SQL. Comprueba el comportamiento del encabezado del proxy en el despliegue. Si el proxy agrupa varias conexiones bajo una IP, compartirán el límite. El boleto conserva los datos históricos de emisión y se presenta con la plantilla vigente de la rifa. El destino de transmisión se consulta en el momento. Los boletos anulados solo muestran su estado.
 
 ## 4. Iniciar la aplicación
 
@@ -155,3 +157,10 @@ En un proyecto de pruebas con la versión 16, aplica la migración 17 antes de a
 Si al guardar aparece `Could not find the function public.configurar_participacion`, comprueba en el SQL Editor del proyecto al que apunta `VITE_SUPABASE_URL` si existe con `select to_regprocedure('public.configurar_participacion(uuid,boolean)');`. Si devuelve `NULL`, aplica las migraciones pendientes hasta la 17 en orden. Si aparece la función, ejecuta `notify pgrst, 'reload schema';` para actualizar la caché de la API. Después vuelve a guardar la opción antes del sorteo. Las reservas vigentes anteriores se incluyen automáticamente.
 
 [Guía del proyecto, los datos y los mensajes (PDF)](output/pdf/Guia-de-RifaPes.pdf)
+
+### Probar y publicar la disponibilidad pública
+
+1. En Supabase de **pruebas**, aplica las migraciones pendientes hasta la 18. Despliega las funciones del apartado 3 en ese proyecto. Configura `ORIGEN_APLICACION` con el origen exacto del frontend de pruebas y apunta sus dos variables `VITE_SUPABASE_*` al mismo proyecto. Para una instancia local inicializada puedes usar `supabase migration up --local` y `supabase functions serve`.
+2. Abre **Rifas → tu rifa → Configuración → Disponibilidad pública**, habilita el enlace y cópialo. Ábrelo en una ventana privada. Busca 7 y 007, activa el filtro de disponibles y expande los premios. Vende un número y reserva otro en administración. Tras la siguiente actualización comprueba su ocupación y libera la reserva. Un vencimiento se refleja cuando la base libera el número.
+3. Cambia cada opción de información visible. Revisa la vista previa y el texto de WhatsApp. Oculta los premios y comprueba también el catálogo del boleto. Regenera el enlace, recarga el anterior y prueba el nuevo. Deshabilítalo y comprueba el resultado desde una ventana privada. En un sitio de pruebas de Netlify abre directamente la ruta, recárgala y verifica los encabezados `X-Robots-Tag` y `Cache-Control`.
+4. Para **producción**, después de validar y autorizar la publicación, confirma el proyecto de destino, respalda la base y aplica las migraciones pendientes en orden. Despliega `consultar-disponibilidad` con los comandos del apartado 3 y el origen de producción. Una función `consultar-boleto` ya publicada sigue siendo compatible. Publica el frontend en Netlify con el `netlify.toml` del repositorio. Comprueba un boleto anterior y un enlace de disponibilidad habilitado expresamente en el sitio final.

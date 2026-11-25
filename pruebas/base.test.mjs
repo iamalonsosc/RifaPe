@@ -802,6 +802,7 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
         ])
           assert.equal(await uno("select count(*) from " + tabla), "0");
         const propia = await crear("numero");
+        await assert.rejects(q("select configurar_disponibilidad($1,true)", [r]));
         await assert.rejects(
           q("select guardar_premio($1,'Ajeno',1,1,false)", [r]),
         );
@@ -1364,6 +1365,86 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
       await pago(venta,5);
       assert.deepEqual(await muestra(), [1,2]);
       await assert.rejects(q("select extraer_numero_sorteo($1,$2,1,$3,array[1])", [id,premio,randomUUID()]), /cambiaron/);
+    });
+    await t.test("Disponibilidad pública, aislamiento y catálogo de 50 premios", async () => {
+      const id = await uno("select guardar_rifa('Disponible',10,2,now(),'numero')");
+      const otraRifa = await crear("numero");
+      const token = await uno("select token_disponibilidad from rifa where id_rifa=$1",[id]);
+      const leer = async (valor = token, funcion = "consultar_disponibilidad") => {
+        await q("reset role");
+        await q("set role service_role");
+        try { return await uno("select "+funcion+"($1)",[valor]); }
+        finally { await q("reset role"); await q("set role authenticated"); }
+      };
+      assert.equal(await leer(),null);
+      const segundo = await uno("select configurar_disponibilidad($1,true)",[otraRifa]);
+      assert.notEqual(segundo,token);
+      assert.equal((await leer(segundo)).numeros.length,50);
+      assert.equal(await uno("select configurar_disponibilidad($1,true)",[id]),token);
+      assert.deepEqual((await leer()).premios,[]);
+      await q("select guardar_rifa('Actualizada',15,2,'2027-02-03T18:00:00Z','numero',null,'https://example.invalid/rifa.png',$1)",[id]);
+      const datos = await leer();
+      assert.deepEqual(Object.keys(datos).sort(),["estado","fecha","foto","nombre","numeros","precio","premios"]);
+      assert.equal(datos.nombre,"Actualizada");
+      assert.equal(datos.precio,15);
+      assert.equal(datos.foto,"https://example.invalid/rifa.png");
+      assert.equal(Date.parse(datos.fecha),Date.parse("2027-02-03T18:00:00Z"));
+      const ids = (await q("select id_numero_rifa from numero_rifa where id_rifa=$1 order by numero",[id])).map(n=>n.id_numero_rifa);
+      assert.deepEqual(datos.numeros,[1,2]);
+      for(let i=1;i<=50;i++) {
+        await q("select guardar_premio($1,$2,$3,1,$4,$5,$6)",[id,i===1?"Nombre privado":"Premio "+i,i,i===1,i===1?"https://example.invalid/oculta.png":"https://example.invalid/premio.png",i===1?"Descripción privada":"Descripción"]);
+        if(i===25) assert.equal((await leer()).premios.length,25);
+      }
+      const premios=(await leer()).premios;
+      assert.deepEqual(premios.map(p=>p.orden),Array.from({length:50},(_,i)=>i+1));
+      assert.deepEqual(premios[0],{orden:1,nombre:"Premio sorpresa",sorpresa:true});
+      assert.equal(premios[1].imagen,"https://example.invalid/premio.png");
+      const ultimo=await uno("select id_premio_rifa from premio_rifa where id_rifa=$1 and orden_sorteo=50",[id]);
+      await q("select guardar_premio($1,'Modificado',2,1,false,null,null,$2)",[id,ultimo]);
+      assert.equal((await leer()).premios[1].nombre,"Modificado");
+      await q("select eliminar_premio($1,$2)",[id,ultimo]);
+      assert.equal((await leer()).premios.length,49);
+      const venta=await vender([ids[0]],id);
+      assert.deepEqual((await leer()).numeros,[-1,2]);
+      const reserva=await uno("select reservar_numeros($1,$2,$3,null)",[id,persona,[ids[1]]]);
+      assert.deepEqual((await leer()).numeros,[-1,-2]);
+      await q("select liberar_reserva($1)",[reserva]);
+      assert.deepEqual((await leer()).numeros,[-1,2]);
+      await pago(venta,15);
+      const boleto=await uno("select token_grupo from vw_comprobantes where id_rifa=$1",[id]);
+      await q("select configurar_disponibilidad($1,null,false,false,false,false)",[id]);
+      assert.deepEqual(Object.keys(await leer()).sort(),["estado","nombre","numeros"]);
+      assert.equal((await leer(boleto,"consultar_boleto")).premios_publicos.length,49);
+      await q("select cancelar_venta($1,'Solicitud')",[venta]);
+      assert.deepEqual((await leer()).numeros,[1,2]);
+      const corta=await uno("select reservar_numeros($1,$2,$3,null)",[id,persona,[ids[1]]]);
+      await q("reset role");
+      await q("update reserva set fecha_vencimiento=now()-interval '1 minute' where id_reserva=$1",[corta]);
+      await q("select vencer_reservas()");
+      await q("set role authenticated");
+      assert.deepEqual((await leer()).numeros,[1,2]);
+      for(const estado of ["terminada","anulada"]) {
+        await q("reset role");
+        await q("update rifa set estado=$2 where id_rifa=$1",[id,estado]);
+        await q("set role authenticated");
+        assert.deepEqual(await leer(),{nombre:"Actualizada",estado});
+      }
+      const nuevo=await uno("select configurar_disponibilidad($1,p_regenerar=>true)",[id]);
+      assert.equal(await leer(),null);
+      assert.equal((await leer(nuevo)).nombre,"Actualizada");
+      await q("select configurar_disponibilidad($1,false)",[id]);
+      assert.equal(await leer(nuevo),null);
+      assert.equal((await leer(segundo)).numeros.length,50);
+      await q("select set_config('request.jwt.claim.sub',$1,false)",[randomUUID()]);
+      try { await assert.rejects(q("select configurar_disponibilidad($1,true)",[id])); }
+      finally { await q("select set_config('request.jwt.claim.sub',$1,false)",[admin]); }
+      await q("reset role");
+      await q("set role anon");
+      try {
+        await assert.rejects(q("select configurar_disponibilidad($1,true)",[id]));
+        await assert.rejects(q("select consultar_disponibilidad($1)",[segundo]));
+        await assert.rejects(q("update rifa set disponibilidad_habilitada=true where id_rifa=$1",[id]));
+      } finally { await q("reset role"); await q("set role authenticated"); }
     });
     await t.test("RLS y privilegios", async () => {
       const temporal = await uno("select guardar_persona('Temporal')");

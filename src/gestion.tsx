@@ -1,3 +1,4 @@
+import { ConfiguracionPublica } from './disponibilidad';
 import { EditorOfertas, AnularRifa, type Oferta } from "./ofertas";
 import { ResumenPagos, type DatosResumen } from "./pagos";
 import { Ayuda } from "./ayuda";
@@ -418,6 +419,7 @@ export function PanelRifa({
         ))}
       </div>
       {err && <p role="alert">{err}</p>}
+      {tab === "Configuración" && <ConfiguracionPublica key={r.id_rifa} r={r} cantidad={premios.length} recargar={recargar} />}
       {tab === "Configuración" &&
         ["activa", "en_sorteo"].includes(r.estado) && (
           <AnularRifa

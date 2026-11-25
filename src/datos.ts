@@ -4,6 +4,12 @@ const url = import.meta.env.VITE_SUPABASE_URL,
 export const db = url && clave ? createClient(url, clave) : null;
 export type Fila = { [campo: string]: string | number | boolean | null };
 export interface Rifa {
+  token_disponibilidad: string;
+  disponibilidad_habilitada: boolean;
+  mostrar_foto_publica: boolean;
+  mostrar_precio_publico: boolean;
+  mostrar_fecha_publica: boolean;
+  mostrar_premios_publicos: boolean;
   incluir_numeros_sin_pagar?: boolean;
   permitir_ventas_sorteo?: boolean;
   ventas_abiertas?: boolean;

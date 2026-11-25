@@ -1,3 +1,4 @@
+import { CatalogoPremios } from './catalogo-premios';
 import {
   PlataformaBoleto,
   plataformaDe,
@@ -963,24 +964,7 @@ export function Publico({
           {b.estado !== "anulado" && (
             <>
               <h2>¡Conoce todos los premios que puedes ganar!</h2>
-              <div className="catalogo-premios">
-                {b.premios_publicos?.map((p) => (
-                  <article key={p.orden}>
-                    {(p.imagen || p.sorpresa) && (
-                      <img
-                        loading="lazy"
-                        src={p.sorpresa ? "/regalo-sorpresa.svg" : p.imagen}
-                        alt=""
-                      />
-                    )}
-                    <div>
-                      <small>Premio {p.orden}</small>
-                      <h3>{p.nombre}</h3>
-                      {p.descripcion && <p>{p.descripcion}</p>}
-                    </div>
-                  </article>
-                ))}
-              </div>
+              <CatalogoPremios premios={b.premios_publicos} />
               {!!b.numeros_anulados?.length && (
                 <p>
                   Boleto parcialmente anulado · Números vigentes: {b.numeros?.map(numero).join(", ")} · Números anulados: {b.numeros_anulados.map(numero).join(", ")}
