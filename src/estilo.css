@@ -1633,3 +1633,151 @@ summary[data-operacion="Ventas"] {
 .boleto .franja-pago { grid-column: 1/-1; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px; padding: 12px 24px; margin: 0; border-radius: 0; text-shadow: none; }
 .boleto .franja-pago .referencia-pago { font-size: 32px; }
 .boleto:has(.franja-pago) { grid-template-rows: minmax(400px, auto) auto; }
+/* =========================================
+   MÉTODO DE PAGO MINIMALISTA DEL BOLETO
+   ========================================= */
+
+.datos-titular-boleto .fila-extra-boleto {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* Separador blanco */
+
+.fila-extra-boleto > :first-child:not(.pago-compacto-inline):has(+ .pago-compacto-inline) {
+  border-right: 1px solid rgba(255, 255, 255, 0.8);
+  padding-right: 10px;
+}
+
+/* Etiqueta compacta */
+
+.fila-extra-boleto .pago-compacto-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 3px 9px;
+  margin: 0;
+  width: fit-content;
+  height: auto;
+  min-height: 0;
+  max-width: 100%;
+  border: none;
+  border-radius: 20px;
+  box-sizing: border-box;
+  line-height: 1.2;
+  text-shadow: none !important;
+  box-shadow: none !important;
+}
+
+/* Logo pequeño */
+
+.pago-compacto-inline .logo-pago {
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  max-width: 18px !important;
+  max-height: 18px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  object-fit: contain;
+  border-radius: 3px;
+  background: transparent;
+  flex-shrink: 0;
+  box-shadow: none !important;
+}
+
+/* Texto Paga al */
+
+.pago-compacto-inline .texto-pago-compacto {
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  line-height: 1.2;
+  color: inherit !important;
+  text-shadow: none !important;
+  -webkit-text-stroke: 0 !important;
+  white-space: nowrap;
+}
+
+/* Número de pago limpio y legible */
+
+.pago-compacto-inline .numero-pago-compacto {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  font-family: Arial, sans-serif;
+  line-height: 1.2;
+  letter-spacing: 0.4px;
+  color: inherit !important;
+  text-shadow: none !important;
+  -webkit-text-stroke: 0 !important;
+  overflow-wrap: anywhere;
+}
+
+/* Colores Yape */
+
+.pago-compacto-inline.pago-compacto-yape {
+  background: #f5eaf8;
+  color: #742284;
+}
+
+/* Colores Plin */
+
+.pago-compacto-inline.pago-compacto-plin {
+  background: #e5faf7;
+  color: #007d76;
+}
+
+/* Otros métodos */
+
+.pago-compacto-inline.pago-compacto-otros {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+/* Evitar sombras heredadas del boleto */
+
+.pago-compacto-inline * {
+  text-shadow: none !important;
+  -webkit-text-stroke: 0 !important;
+  filter: none !important;
+}
+/* Ajuste fino del método de pago compacto */
+
+.fila-extra-boleto .pago-compacto-inline {
+  padding: 4px 10px;
+  gap: 6px;
+}
+
+/* Logo ligeramente más grande */
+
+.pago-compacto-inline .logo-pago {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  max-width: 30px !important;
+  max-height: 30px !important;
+}
+
+/* Texto Paga al más visible */
+
+.pago-compacto-inline .texto-pago-compacto {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+}
+
+/* Número ligeramente más grande y en negrita */
+
+.pago-compacto-inline .numero-pago-compacto {
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.3px;
+}
+
+/* Mayor contraste para Yape */
+
+.pago-compacto-inline.pago-compacto-yape {
+  color: #652074;
+}

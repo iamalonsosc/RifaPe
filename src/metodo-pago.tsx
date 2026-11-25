@@ -49,18 +49,44 @@ function Logo({ tipo }: { tipo: TipoMetodoPago }) {
 export function TarjetaPago({
   metodo,
   franja = false,
+  compacto = false,
   copiar = false,
   children,
 }: {
   metodo?: MetodoPago | null;
   franja?: boolean;
+  compacto?: boolean;
   copiar?: boolean;
   children?: ReactNode;
 }) {
   const [aviso, avisar] = useState("");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
   useEffect(() => () => clearTimeout(timer.current), []);
+
   if (!metodo) return null;
+
+  const referenciaFormateada =
+    metodo.tipo !== "Otros"
+      ? metodo.referencia.replace(/^(\d{3})(\d{3})(\d{3})$/, "$1 $2 $3")
+      : metodo.referencia;
+
+  if (compacto) {
+    return (
+      <div
+        className={
+          "pago-compacto-inline pago-compacto-" + metodo.tipo.toLowerCase()
+        }
+      >
+        <Logo tipo={metodo.tipo} />
+        <span className="texto-pago-compacto">
+          {metodo.tipo === "Otros" ? metodo.nombre : "Paga al"}
+        </span>
+        <strong className="numero-pago-compacto">{referenciaFormateada}</strong>
+      </div>
+    );
+  }
+
   return (
     <div
       className={

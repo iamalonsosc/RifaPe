@@ -392,8 +392,15 @@ function Tarjeta({
               {b.plantilla.mostrar_lugar && b.modalidad === "sin_definir" && (
                 <p>Sin definir</p>
               )}
-              {b.plantilla.mostrar_lugar && <PlataformaBoleto b={b} />}
+
+              <div className="fila-extra-boleto">
+                {b.plantilla.mostrar_lugar && <PlataformaBoleto b={b} />}
+
+                {b.metodo_pago && (
+                  <TarjetaPago metodo={b.metodo_pago} compacto />
+                )}
             </div>
+          </div>
             {b.plantilla.mostrar_qr && qr && (
               <img
                 className="qr-boleto"
@@ -405,7 +412,7 @@ function Tarjeta({
           <div className="talon-boleto">
             {b.plantilla.mostrar_premio && <PremiosBoleto b={b} />}
           </div>
-          <TarjetaPago metodo={b.metodo_pago} franja />
+          {/* <TarjetaPago metodo={b.metodo_pago} franja /> */}
         </div>
       </VistaEscalada>
       {!muestra && (
