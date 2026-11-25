@@ -17,7 +17,7 @@ const explicaciones = {
   Reservar:
     "Separa los números sin vencimiento o hasta la fecha y hora que elijas. Convierte la reserva en venta para registrar un abono.",
   Emitir:
-    "Genera un boleto por número. Conserva su QR aunque se abone después. Para participar en el sorteo la venta debe estar pagada.",
+    "Genera un boleto por número. Conserva su QR aunque se abone después. La configuración de la rifa determina si participan las reservas vigentes y las ventas con saldo.",
   Cancelar:
     "Al liberar la reserva o cancelar la venta se anulan sus boletos y se liberan sus números. Los pagos anteriores conservan su historial.",
   "Sacar número":

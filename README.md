@@ -26,8 +26,9 @@ En **SQL Editor → New query**, pega y ejecuta **un archivo completo a la vez**
 | 14 | 20261124000200_plataforma_meet.sql | Google Meet y modalidad en la consulta pública |
 | 15 | 20261124000300_ubicacion_presencial.sql | Ubicación opcional de Google Maps para el mensaje presencial |
 | 16 | 20261124000400_operaciones_en_vivo.sql | Reservas opcionales, anulación trazable, catálogo público y ventas durante el sorteo |
+| 17 | 20261125000100_participacion_sin_pago.sql | Participación de ventas con saldo y reservas vigentes por rifa |
 
-Si ya aplicaste la migración 15, ejecuta solamente la 16. En instalaciones anteriores aplica las pendientes en orden. En las rifas anteriores se seleccionan inicialmente hasta cinco premios según el orden del sorteo. En rifas activas puedes cambiar esa selección desde **Premios**. Al mover un destacado a una prioridad ocupada, ambos intercambian sus posiciones en el boleto.
+Si ya aplicaste la migración 16, ejecuta solamente la 17. Desde la versión 15 aplica la 16 y luego la 17. En instalaciones anteriores aplica las pendientes en orden. En las rifas anteriores se seleccionan inicialmente hasta cinco premios según el orden del sorteo. En rifas activas puedes cambiar esa selección desde **Premios**. Al mover un destacado a una prioridad ocupada, ambos intercambian sus posiciones en el boleto.
 
 Para WhatsApp abre un boleto, personaliza el mensaje y prepara la imagen. El selector del dispositivo permite elegir WhatsApp si admite archivos. También puedes descargar el PNG y adjuntarlo al mensaje preparado.
 
@@ -117,9 +118,9 @@ Las pruebas de PostgreSQL necesitan poder iniciar un proceso temporal, escribir 
 
 ## Decisiones de negocio
 
-- Un número vendido queda ocupado desde la creación de la venta. Puedes emitir desde una reserva o desde una venta con cualquier saldo. Al convertir la reserva se conserva su QR. Solo una venta pagada participa en el sorteo. El precio de cada línea se conserva. Una cancelación pagada crea devoluciones pendientes por pago. La recaudación vigente excluye ventas anuladas. Los importes recibidos y las devoluciones pendientes o realizadas se conservan en el historial.
+- Un número vendido queda ocupado desde la creación de la venta. Puedes emitir desde una reserva o desde una venta con cualquier saldo. Al convertir la reserva se conserva su QR. Por defecto solo participa una venta pagada. En **Configuración → Incluir Números sin pagar**, guarda la opción antes del inicio para incluir ventas pendientes y reservas vigentes, con o sin boleto emitido. El precio de cada línea se conserva. Una cancelación pagada crea devoluciones pendientes por pago. La recaudación vigente excluye ventas anuladas. Los importes recibidos y las devoluciones pendientes o realizadas se conservan en el historial.
 - Las operaciones de cada rifa toman un bloqueo sobre su fila. Los cambios de asignación, los detalles y el estado de cada número se confirman juntos. La base verifica que premio, participante, número y sorteo correspondan a relaciones compatibles.
-- Al comenzar se bloquea la edición de premios y reglas. Si se habilitan ventas en vivo, los números se incorporan al completar el pago. Cada nueva extracción guarda su propio conjunto elegible. Para un premio por persona, la validación considera el peor caso de que ganen primero las personas con más números. Cada extracción usa bytes aleatorios criptográficos en PostgreSQL y se confirma junto con su resultado. El navegador anima el resultado ya persistido.
+- Al comenzar se bloquea la edición de premios y reglas. Si se habilitan ventas en vivo, los números se incorporan al registrar la venta si se incluyen los números sin pagar, o al completar el pago con la opción apagada. Cada nueva extracción guarda su propio conjunto elegible. Para un premio por persona, la validación considera el peor caso de que ganen primero las personas con más números. Cada extracción usa bytes aleatorios criptográficos en PostgreSQL y se confirma junto con su resultado. El navegador anima el resultado ya persistido.
 - En Premios puedes agregar un sorteo por puestos. Se crean tres premios consecutivos, del tercero al primero. Cada puesto admite foto y usa el mismo registro oficial. Cada selección se inicia manualmente.
 - Las imágenes subidas son públicas. Los participantes, ventas y pagos tienen políticas privadas. El nombre impreso en el boleto procede de su emisión. El enlace y el lugar de transmisión reflejan la configuración vigente.
 
@@ -133,10 +134,10 @@ Un envío automático de imagen y mensaje al número del cliente requeriría una
 
 ### Probar y publicar la versión agrupada
 
-1. Usa Supabase local o un proyecto de pruebas que tenga las migraciones 1–12 y la función consultar-boleto. En el editor SQL de ese entorno aplica las migraciones 13 a 16 en orden. Con Supabase CLI y una instancia local ya inicializada, usa `supabase migration up --local`.
+1. Usa Supabase local o un proyecto de pruebas que tenga las migraciones 1–12 y la función consultar-boleto. En el editor SQL de ese entorno aplica las migraciones 13 a 17 en orden. Con Supabase CLI y una instancia local ya inicializada, usa `supabase migration up --local`.
 2. Configura la URL y la clave pública **de pruebas** en .env.local. Ejecuta `npm ci` y `npm run dev`. Un frontend en localhost opera sobre el proyecto al que apuntan estas variables.
 3. Configura una rifa a S/ 10 con tres números por S/ 25, vende tres y cobra S/ 15. Verifica saldo S/ 10, compra posterior separada, descarga agrupada y consulta pública. Revisa la anulación y confirma una devolución desde Números y ventas.
-4. Tras aprobar las pruebas, conserva un respaldo y aplica las migraciones pendientes hasta la 16 a producción antes de publicar el frontend en Netlify. Mantén la función consultar-boleto y su configuración de origen. Publica desde la rama conectada al sitio y comprueba una URL antigua, una agrupada y el ZIP.
+4. Tras aprobar las pruebas, conserva un respaldo y aplica las migraciones pendientes hasta la 17 a producción antes de publicar el frontend en Netlify. Mantén la función consultar-boleto y su configuración de origen. Publica desde la rama conectada al sitio y comprueba una URL antigua, una agrupada y el ZIP.
 
 Los QR antiguos conservan su ruta y validación individual. El nuevo QR identifica a la pareja rifa–participante. Los números de ventas adicionales se actualizan en la consulta y en la siguiente descarga; los archivos ya guardados son copias de la fecha de descarga.
 
@@ -146,3 +147,11 @@ Los QR antiguos conservan su ruta y validación individual. El nuevo QR identifi
 2. En Configuración habilita ventas durante el sorteo y guarda el precio. Desde dos ventanas abre Números y ventas y Sorteo. Completa un pago durante una extracción y comprueba su incorporación al siguiente conjunto elegible. La pantalla consulta el servidor periódicamente; los números definitivos y cada ganador se registran bajo el bloqueo de la rifa.
 3. Consulta un QR anterior en móvil. Comprueba la lista completa de premios, el lugar y ambas descargas. Las instantáneas de candidatos corresponden a las extracciones posteriores a la migración. Las anteriores conservan sus resultados originales.
 4. Tras aprobar las pruebas, guarda un respaldo, aplica la misma migración en Supabase de producción y luego publica el frontend desde la rama conectada a Netlify. Verifica un QR antiguo y uno agrupado. La función Edge consultar-boleto conserva su contrato.
+
+### Actualizar la participación del sorteo
+
+En un proyecto de pruebas con la versión 16, aplica la migración 17 antes de actualizar la interfaz. Las rifas comienzan con la opción apagada. Comprueba la vista previa con una venta pagada, una pendiente y una reserva vigente. Enciende el switch, guarda y comprueba que aparecen las tres. Verifica el historial tras la extracción. Para publicar, confirma el respaldo y la autorización del entorno de destino.
+
+Si al guardar aparece `Could not find the function public.configurar_participacion`, comprueba en el SQL Editor del proyecto al que apunta `VITE_SUPABASE_URL` si existe con `select to_regprocedure('public.configurar_participacion(uuid,boolean)');`. Si devuelve `NULL`, aplica las migraciones pendientes hasta la 17 en orden. Si aparece la función, ejecuta `notify pgrst, 'reload schema';` para actualizar la caché de la API. Después vuelve a guardar la opción antes del sorteo. Las reservas vigentes anteriores se incluyen automáticamente.
+
+[Guía del proyecto, los datos y los mensajes (PDF)](output/pdf/Guia-de-RifaPes.pdf)

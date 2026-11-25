@@ -1307,6 +1307,64 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
         );
       },
     );
+    await t.test("Participación por rifa con ventas sin abonos, parciales y reservas", async () => {
+      const id = await crear("persona");
+      const ids = (await q("select id_numero_rifa from numero_rifa where id_rifa=$1 order by numero", [id])).map(x => x.id_numero_rifa);
+      await pago(await vender([ids[0]], id), 10);
+      await vender([ids[1]], id);
+      await pago(await vender([ids[2]], id), 3);
+      const titular = await uno("select guardar_persona('Titular de reserva')");
+      const reservar = (n) => uno("select reservar_numeros($1,$2,$3,null)", [id, titular, [ids[n]]]);
+      const reservaGanadora = await reservar(3);
+      await q("select liberar_reserva($1)", [await reservar(4)]);
+      await q("select cancelar_venta($1,'Cancelación')", [await vender([ids[5]], id)]);
+      const vencida = await reservar(6);
+      await q("reset role");
+      await q("update reserva set fecha_vencimiento=now()-interval '1 second' where id_reserva=$1", [vencida]);
+      await q("set role authenticated");
+      const muestra = async (premio = null) => (await uno("select resumen_candidatos($1,$2)", [id,premio])).muestra;
+      assert.deepEqual(await muestra(), [1]);
+      await q("select configurar_participacion($1,true)", [id]);
+      assert.deepEqual(await muestra(), [1,2,3,4]);
+      await q("select configurar_participacion($1,false)", [id]);
+      assert.deepEqual(await muestra(), [1]);
+      await q("select configurar_participacion($1,true)", [id]);
+      for (const orden of [1,2])
+        await q("select guardar_premio($1,'Premio', $2,1,false)", [id,orden]);
+      const premios = (await q("select id_premio_rifa from premio_rifa where id_rifa=$1 order by orden_sorteo",[id])).map(p => p.id_premio_rifa);
+      await q("select iniciar_sorteo($1)", [id]);
+      await assert.rejects(q("select configurar_participacion($1,false)", [id]), /inició/);
+      assert.deepEqual(await muestra(premios[0]), [1,2,3,4]);
+      for (const premio of premios) {
+        const antes = await muestra(premio);
+        await q("select extraer_numero_sorteo($1,$2,1,$3,$4)", [id,premio,randomUUID(),antes]);
+      }
+      await q("reset role");
+      await q("update reserva set fecha_vencimiento=now()-interval '1 second' where id_reserva=$1", [reservaGanadora]);
+      await q("select vencer_reservas()");
+      await q("set role authenticated");
+      const ganadores = await q("select id_persona,numero from vw_historial_ganadores where id_rifa=$1", [id]);
+      assert.equal(ganadores.length, 2);
+      assert.equal(ganadores.find(g => g.id_persona===titular)?.numero, 4);
+      assert.ok(ganadores.some(g => g.id_persona===persona));
+    });
+    await t.test("Una conversión y una venta en vivo entran una sola vez sin pago", async () => {
+      const id = await crear("numero");
+      const ids = (await q("select id_numero_rifa from numero_rifa where id_rifa=$1 order by numero limit 2", [id])).map(n => n.id_numero_rifa);
+      const reserva = await uno("select reservar_numeros($1,$2,$3,null)", [id, persona, [ids[0]]]);
+      await q("select guardar_premio($1,'En vivo',1,1,false)", [id]);
+      const premio = await uno("select id_premio_rifa from premio_rifa where id_rifa=$1", [id]);
+      await q("select configurar_ventas_sorteo($1,true,5)", [id]);
+      await q("select configurar_participacion($1,true)", [id]);
+      await q("select iniciar_sorteo($1)", [id]);
+      await q("select registrar_venta($1,$2,$3,$4)", [id, persona, [ids[0]], reserva]);
+      const venta = await vender([ids[1]], id);
+      const muestra = async () => (await uno("select resumen_candidatos($1,$2)", [id,premio])).muestra;
+      assert.deepEqual(await muestra(), [1,2]);
+      await pago(venta,5);
+      assert.deepEqual(await muestra(), [1,2]);
+      await assert.rejects(q("select extraer_numero_sorteo($1,$2,1,$3,array[1])", [id,premio,randomUUID()]), /cambiaron/);
+    });
     await t.test("RLS y privilegios", async () => {
       const temporal = await uno("select guardar_persona('Temporal')");
       await q("select guardar_persona('Editada',null,'123456789',$1)", [

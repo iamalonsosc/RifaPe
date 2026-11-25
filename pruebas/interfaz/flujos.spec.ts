@@ -35,6 +35,7 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   let premio: Record<string, unknown> | null = null;
   let usuarioTikTok = "";
   let asignacion = "";
+  let incluir = false;
   let creada = false;
   let abonado = 0;
   let iniciado = false,
@@ -58,6 +59,10 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
         ofertas: [],
       };
     if (ruta.endsWith("/vw_premios_rifa")) data = premio ? [premio] : [];
+    if (ruta.endsWith("/configurar_participacion")) {
+      expect(route.request().postDataJSON().p_rifa).toBe(rifaid);
+      incluir = route.request().postDataJSON().p_incluir;
+    }
     if (ruta.endsWith("/iniciar_sorteo")) iniciado = true;
     if (ruta.endsWith("/resumen_candidatos"))
       data = {
@@ -294,6 +299,7 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
       data = [
         {
           id_rifa: rifaid,
+          incluir_numeros_sin_pagar: incluir,
           nombre: "Rifa de prueba",
           precio_numero: 5,
           cantidad_numeros: 50,
@@ -336,6 +342,19 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   await expect(
     page.getByRole("heading", { name: "Rifa de prueba" }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Configuración", exact: true }).click();
+  const opcion = page.getByRole("switch", { name: "Incluir Números sin pagar" });
+  await expect(opcion).not.toBeChecked();
+  await opcion.check();
+  await page.getByRole("button", { name: "Guardar participación" }).click();
+  await expect.poll(() => incluir).toBe(true);
+  await page.getByRole("button", { name: "Premios", exact: true }).click();
+  await page.getByRole("button", { name: "Configuración", exact: true }).click();
+  await expect(opcion).toBeChecked();
+  await opcion.uncheck();
+  await page.getByRole("button", { name: "Guardar participación" }).click();
+  await expect.poll(() => incluir).toBe(false);
+  await page.getByRole("button", { name: "Premios", exact: true }).click();
   const alta = page
     .locator("section")
     .filter({ has: page.getByRole("heading", { name: "Agregar premio" }) });

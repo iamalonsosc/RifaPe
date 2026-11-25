@@ -74,8 +74,9 @@ function VentasEnVivo({ r, recargar }: { r: Rifa; recargar: () => void }) {
                   ((1 - Number(importe) / r.precio_numero) * 100).toFixed(2),
                 ) +
                 "%. "}
-            Los nuevos números pagados participarán desde la siguiente
-            extracción elegible.
+            {r.incluir_numeros_sin_pagar
+              ? "Cada venta registrada participa desde la siguiente extracción elegible."
+              : "Los nuevos números pagados participarán desde la siguiente extracción elegible."}
           </p>
         )}
       </Formulario>
@@ -429,6 +430,27 @@ export function PanelRifa({
       {tab === "Configuración" ? (
         r.estado === "activa" ? (
           <>
+            <section>
+              <h3>Participación en el sorteo</h3>
+              <Formulario
+                accion="Guardar participación"
+                guardar={async (f) => {
+                  await rpc("configurar_participacion", {
+                    p_rifa: r.id_rifa,
+                    p_incluir: f.has("incluir"),
+                  });
+                  recargar();
+                }}
+              >
+                <label className="interruptor">
+                  <input key={String(r.incluir_numeros_sin_pagar) + r.id_rifa}
+                    type="checkbox" role="switch" name="incluir"
+                    defaultChecked={!!r.incluir_numeros_sin_pagar} />
+                  Incluir Números sin pagar
+                </label>
+                <p>Al activarlo, participan las ventas vigentes con o sin abonos y las reservas vigentes. Al desactivarlo, solo participan las ventas pagadas al 100 %.</p>
+              </Formulario>
+            </section>
             <VentasEnVivo r={r} recargar={recargar} />
             <EditarRifa r={r} alGuardar={recargar} />
             <Accion

@@ -4,6 +4,7 @@ Orden de más reciente a más antiguo. Los hashes identifican commits del reposi
 
 | Referencia | Cambios identificados |
 |---|---|
+| 25 de noviembre de 2026 · migración 17 local | Opción de participación con saldo por rifa, reservas vigentes y titular fijado en cada extracción. La configuración, la vista previa y WhatsApp reflejan la regla. Guía de mantenimiento en PDF. |
 | Correcciones locales de la migración 16 | Cotización de reservas en el historial, mensajes por estado de pago, boletos parcialmente anulados y seguimiento de extracciones entre pantallas. |
 | Trabajo local sobre `4b99054`, migración 16 | Historial de operaciones por estado, reservas indefinidas, trazabilidad de anulaciones y modalidad «Sin definir». Catálogo público completo, esfera sin el límite visual de 12 y ventas opcionales durante el evento con candidatos registrados por extracción. |
 | `4b99054`, migración 15 | Envío de boletos, plantillas de WhatsApp por modalidad, contraste del boleto y ubicación presencial de Google Maps. |
@@ -12,6 +13,8 @@ Orden de más reciente a más antiguo. Los hashes identifican commits del reposi
 | `56e9dc9`, migraciones 1–10 | Base de rifas, participantes, reservas, ventas, abonos, resumen financiero, sorteos, boletos públicos, imágenes y edición de plantillas. |
 
 ## Evidencia de verificación
+
+El 25 de noviembre pasaron 23 pruebas de Node sobre PostgreSQL temporal (incluida la contenedora), cinco recorridos en Edge con Supabase simulado, ESLint y la compilación. Se comprobó el switch en ambas posiciones, la exclusión de bajas y vencimientos, la conservación del ganador tras vencer su reserva, la regla por persona y la incorporación de ventas en vivo sin duplicar números.
 
 En la conversación de desarrollo del 24 de noviembre de 2026, la última ejecución SQL registrada informó **20 pruebas aprobadas** en el conteo de Node, incluida la prueba contenedora. La última ejecución de Playwright informó **5 recorridos aprobados en Edge**. También finalizaron correctamente la compilación y ESLint. Los escenarios cubiertos por módulo están en [FUNCIONALIDADES.md](FUNCIONALIDADES.md). Esos resultados corresponden a la revisión anterior.
 

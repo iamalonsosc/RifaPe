@@ -484,11 +484,15 @@ function CompartirIndividual({
     ],
     [
       "reservado",
-      "¡Gracias por reservar! Tus números han sido reservados correctamente. Recuerda completar el pago para participar en el sorteo.",
+      b.incluir_numeros_sin_pagar
+        ? "Tus números participan mientras la reserva esté vigente."
+        : "¡Gracias por reservar! Tus números han sido reservados correctamente. Recuerda completar el pago para participar en el sorteo.",
     ],
     [
       "pendiente",
-      "Tu boleto ha sido registrado correctamente. Recuerda completar el saldo pendiente para que tus números puedan participar en el sorteo.",
+      b.incluir_numeros_sin_pagar
+        ? "Tus números registrados participan aunque quede saldo pendiente."
+        : "Tu boleto ha sido registrado correctamente. Recuerda completar el saldo pendiente para que tus números puedan participar en el sorteo.",
     ],
   ];
   const avisos = grupos.flatMap(([estado, aviso]) => {
@@ -1081,6 +1085,7 @@ export function Boletos({
         : undefined;
   const tickets = bs.map((x) => ({
     ...x.datos_emision_historicos,
+    incluir_numeros_sin_pagar: r.incluir_numeros_sin_pagar,
     codigo: x.token_grupo,
     numeros: x.numeros,
     estados_numeros: x.estados_numeros,

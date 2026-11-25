@@ -186,8 +186,11 @@ export function Sorteo({
             <Tombola muestra={resumen?.muestra ?? []} mezcla={false} />
             <p>
               {r.permitir_ventas_sorteo
-                ? "Las ventas seguirán abiertas. Los nuevos números participan al completar su pago."
-                : "Al iniciar se cierran las ventas. Participan los números pagados."}
+                ? "Las ventas seguirán abiertas."
+                : "Al iniciar se cierran las ventas."}{" "}
+              {r.incluir_numeros_sin_pagar
+                ? "Participan los números de ventas y reservas vigentes, incluso con saldo pendiente."
+                : "Participan solo los números pagados al 100 %."}
             </p>
             {listo && (
               <Accion
