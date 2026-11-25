@@ -1452,6 +1452,58 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
         await assert.rejects(q("update rifa set disponibilidad_habilitada=true where id_rifa=$1",[id]));
       } finally { await q("reset role"); await q("set role authenticated"); }
     });
+    await t.test("Métodos por rifa, QR vigente, saldo y contrato anterior", async () => {
+      const guardar = (id, metodo) => uno(
+        "select guardar_rifa_ofertas('Método',10,4,now(),'numero',null,null,$1,'[]',$2)", [id,metodo]);
+      const yape = {tipo:"Yape",nombre:"Yape",referencia:"960421169"};
+      const plin = {tipo:"Plin",nombre:"Plin",referencia:"987654321"};
+      const id = await guardar(null,yape), segunda = await guardar(null,plin);
+      const sin = await guardar(null,null);
+      const token = (id) => uno("select configurar_disponibilidad($1,true)",[id]);
+      const [a,b,c] = [await token(id),await token(segunda),await token(sin)];
+      const consultar = async (t, boleto=false) => {
+        await q("set role service_role");
+        try { return await uno(boleto ? "select consultar_boleto($1)" : "select consultar_disponibilidad($1)",[t]); }
+        finally { await q("set role authenticated"); }
+      };
+      assert.deepEqual((await consultar(a)).metodo_pago,yape);
+      assert.deepEqual((await consultar(b)).metodo_pago,plin);
+      assert.equal((await consultar(c)).metodo_pago,undefined);
+      for(const invalido of [{}, {...yape,referencia:"9003A4567"}, {...plin,referencia:"810000000"},
+        {...plin,referencia:987654321}, {tipo:"Otros",nombre:"  ",referencia:"001"}, {tipo:"Otros",nombre:"BCP",referencia:""}])
+        await assert.rejects(guardar(id,invalido));
+      const v = await uno("select registrar_venta($1,$2,array(select id_numero_rifa from numero_rifa where id_rifa=$1 order by numero limit 2))",[id,persona]);
+      await q("select emitir_boletos($1)",[v]);
+      const qr = await uno("select token_publico from vw_boletos_rifa where id_venta=$1 limit 1",[v]);
+      const ticket = () => consultar(qr,true);
+      assert.deepEqual((await ticket()).metodo_pago,yape);
+      assert.equal((await ticket()).saldo_pendiente,20);
+      assert.equal((await ticket()).tiene_abonos,false);
+      await pago(v,8);
+      assert.equal((await ticket()).tiene_abonos,true);
+      assert.equal((await ticket()).saldo_pendiente,12);
+      assert.deepEqual(await uno("select importes from vw_comprobantes_operacion where id_rifa=$1",[id]),{total:20,saldo:12});
+      await guardar(id,{...yape,referencia:"999123456"});
+      assert.equal((await ticket()).metodo_pago.referencia,"999123456");
+      assert.deepEqual((await consultar(b)).metodo_pago,plin);
+      const personalizado = {tipo:"Otros",nombre:"Transferencia BCP",referencia:"001-ABC"};
+      await guardar(id,{...personalizado,nombre:" Transferencia   BCP ",referencia:" 001-ABC "});
+      await q("select guardar_rifa_ofertas('Anterior',10,4,now(),'numero',null,null,$1,'[]')",[id]);
+      assert.deepEqual((await ticket()).metodo_pago,personalizado);
+      assert.deepEqual((await consultar(a)).metodo_pago,personalizado);
+      await pago(v,12);
+      assert.equal((await ticket()).saldo_pendiente,0);
+      await guardar(id,null);
+      assert.equal((await ticket()).metodo_pago,undefined);
+      assert.equal((await consultar(a)).metodo_pago,undefined);
+      await guardar(id,yape);
+      await q("select anular_rifa($1,'Evento suspendido')",[id]);
+      assert.equal((await ticket()).estado,"anulado");
+      assert.equal((await consultar(a)).metodo_pago,undefined);
+      await q("set role anon");
+      try { await assert.rejects(guardar(segunda,null),/permission denied/); }
+      finally { await q("set role authenticated"); }
+    });
     await t.test("RLS y privilegios", async () => {
       const temporal = await uno("select guardar_persona('Temporal')");
       await q("select guardar_persona('Editada',null,'123456789',$1)", [

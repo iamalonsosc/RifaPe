@@ -1,3 +1,4 @@
+import { TarjetaPago, mensajeMetodo, metodoDe } from "./metodo-pago";
 import { CatalogoPremios } from './catalogo-premios';
 import { copiarMensaje, enlaceWhatsApp } from "./whatsapp";
 import {
@@ -36,6 +37,7 @@ function informacionRifa(r: Rifa, premios: Premio[]) {
     .filter((p) => p.prioridad != null)
     .sort((a, b) => a.prioridad! - b.prioridad!);
   return {
+    metodo_pago: metodoDe(r),
     rifa: r.nombre,
     fecha: r.fecha_sorteo,
     imagen: r.imagen_premio_url,
@@ -403,6 +405,7 @@ function Tarjeta({
           <div className="talon-boleto">
             {b.plantilla.mostrar_premio && <PremiosBoleto b={b} />}
           </div>
+          <TarjetaPago metodo={b.metodo_pago} franja />
         </div>
       </VistaEscalada>
       {!muestra && (
@@ -508,7 +511,12 @@ function CompartirIndividual({
   });
   const texto = [
     mensaje,
-    ...avisos,
+    ...(b.estado_rifa === "terminada" || b.estado_rifa === "anulada" ? [] : avisos),
+    b.importes && "💰 *Total:* " + soles(b.importes.total),
+    b.importes && (b.importes.saldo === 0 ? "📋 *Estado:* Pagado" :
+      b.importes.saldo < b.importes.total ? "📋 *Estado:* Pago parcial · Saldo pendiente: " + soles(b.importes.saldo) :
+      "📋 *Estado:* Pendiente de pago"),
+    mensajeMetodo(b.metodo_pago),
     "🎟️ *DETALLES DE TU BOLETO*",
     [
       "🏷️ *Rifa:* " + b.rifa,
@@ -827,6 +835,7 @@ type Comprobante = {
   estado: string;
   estado_rifa: string;
   numeros: number[];
+  importes?: Ticket["importes"];
   estados_numeros: Ticket["estados_numeros"];
   datos_emision_historicos: Ticket;
 };
@@ -960,6 +969,12 @@ export function Publico({
           <Tarjeta b={b} publico />
           {b.estado !== "anulado" && (
             <>
+              <TarjetaPago metodo={b.metodo_pago} copiar>
+                {b.estado_rifa !== "terminada" && b.estado_rifa !== "anulada" && (b.saldo_pendiente ?? 0) > 0 &&
+                  <p>Saldo pendiente: {soles(b.saldo_pendiente!)}.
+                    {!b.tiene_abonos && " Realiza el pago al número indicado y coordina la confirmación con el organizador de la rifa."}
+                  </p>}
+              </TarjetaPago>
               <h2>¡Conoce todos los premios que puedes ganar!</h2>
               <CatalogoPremios premios={b.premios_publicos} />
               {!!b.numeros_anulados?.length && (
@@ -1070,6 +1085,7 @@ export function Boletos({
     codigo: x.token_grupo,
     numeros: x.numeros,
     estados_numeros: x.estados_numeros,
+    importes: x.importes,
     numero: x.numeros[0],
     estado: x.estado,
     estado_rifa: x.estado_rifa,

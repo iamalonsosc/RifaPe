@@ -1,8 +1,9 @@
+import { TarjetaPago, metodoDe, mensajeMetodo } from "./metodo-pago";
 import { useEffect, useRef, useState } from "react";
 import { Globe, Ticket as Icono, Gift, Info } from "lucide-react";
 import { db, rpc, soles, fecha, numero, type Rifa, type Ticket } from "./datos";
 import { CatalogoPremios } from "./catalogo-premios";
-import { copiarMensaje, enlaceWhatsApp } from "./whatsapp";
+import { copiarTexto, copiarMensaje, enlaceWhatsApp } from "./whatsapp";
 
 const opciones = [
   ["mostrar_foto_publica", "p_foto", "Mostrar fotografía de la rifa"],
@@ -41,7 +42,8 @@ export function ConfiguracionPublica({
       (r.mostrar_premios_publicos ? " y los premios" : "") +
       " en el siguiente enlace:",
     url,
-    "Para adquirir tus números, comunícate directamente con nosotros.",
+    !["terminada","anulada"].includes(r.estado) && mensajeMetodo(metodoDe(r)),
+    !["terminada","anulada"].includes(r.estado) && "Para adquirir tus números, comunícate directamente con nosotros.",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -109,7 +111,7 @@ export function ConfiguracionPublica({
               type="button"
               onClick={async () => {
                 try {
-                  await navigator.clipboard.writeText(url);
+                  await copiarTexto(url);
                   avisar("Enlace copiado.");
                 } catch {
                   avisar("Copia el enlace que aparece arriba.");
@@ -159,6 +161,7 @@ export function ConfiguracionPublica({
 }
 
 interface Consulta {
+  metodo_pago?: Ticket["metodo_pago"];
   nombre: string;
   estado: string;
   foto?: string;
@@ -337,6 +340,7 @@ export function Disponibilidad({ token }: { token: string }) {
             <p>Esta rifa ha sido cancelada y ya no se encuentra disponible</p>
           ) : (
             <>
+              <TarjetaPago metodo={datos.metodo_pago} copiar />
               <div className="cifras-publicas">
                 {[
                   [numeros.length, "Total"],
@@ -473,10 +477,10 @@ export function Disponibilidad({ token }: { token: string }) {
           <footer>
             <Info size={18} />
             <strong>Consulta exclusivamente informativa</strong>
-            <p>
+            {!["terminada","anulada"].includes(datos.estado) && <p>
               Para adquirir un número, comunícate directamente con el
               organizador de la rifa.
-            </p>
+            </p>}
             <small>Gestionado con RifaPes</small>
           </footer>
         </>

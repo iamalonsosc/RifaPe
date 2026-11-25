@@ -10,6 +10,7 @@ test("Consulta anónima, actualización, filtros y catálogo responsive", async 
     sorpresa: i === 0,
   }));
   const datos = {
+    metodo_pago: {tipo:"Plin",nombre:"Plin",referencia:"987654321"},
     nombre: "Rifa de noviembre",
     estado: "activa",
     numeros: Array.from({ length: 220 }, (_, i) => (i === 6 || i === 7 ? -(i+1) : i + 1)),
@@ -36,6 +37,12 @@ test("Consulta anónima, actualización, filtros y catálogo responsive", async 
     "content",
     /noindex/,
   );
+  await page.context().grantPermissions(["clipboard-read","clipboard-write"]);
+  await page.getByRole("button",{name:"Copiar número de pago"}).click();
+  await expect(page.getByRole("status")).toHaveText("Número de pago copiado correctamente");
+  expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe("987654321");
+  await page.clock.fastForward(3100);
+  await expect(page.getByText("Número de pago copiado correctamente")).toHaveCount(0);
   const grid = page.locator(".numeros-publicos");
   const tema = page.getByRole("button",{name:/Usar tema/});
   const icono = page.locator(".marca svg");

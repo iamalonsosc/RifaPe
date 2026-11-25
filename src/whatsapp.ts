@@ -10,12 +10,16 @@ export function enlaceWhatsApp(texto: string, telefono = "") {
   return url.href;
 }
 
+export function copiarTexto(texto: string) {
+  return navigator.clipboard.writeText(texto);
+}
+
 export async function copiarMensaje(
   texto: string,
   avisar: (mensaje: string) => void,
 ) {
   try {
-    await navigator.clipboard.writeText(texto);
+    await copiarTexto(texto);
     avisar("Mensaje copiado. Puedes pegarlo en WhatsApp.");
   } catch {
     avisar(

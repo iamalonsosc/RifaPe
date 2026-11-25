@@ -3,7 +3,16 @@ const url = import.meta.env.VITE_SUPABASE_URL,
   clave = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 export const db = url && clave ? createClient(url, clave) : null;
 export type Fila = { [campo: string]: string | number | boolean | null };
+export type TipoMetodoPago = "Yape" | "Plin" | "Otros";
+export interface MetodoPago {
+  tipo: TipoMetodoPago;
+  nombre: string;
+  referencia: string;
+}
 export interface Rifa {
+  tipo_metodo_pago?: TipoMetodoPago | null;
+  nombre_metodo_pago?: string | null;
+  referencia_pago?: string | null;
   token_disponibilidad: string;
   disponibilidad_habilitada: boolean;
   mostrar_foto_publica: boolean;
@@ -57,6 +66,10 @@ export interface Visual {
   fondo_url: string | null;
 }
 export interface Ticket {
+  metodo_pago?: MetodoPago | null;
+  saldo_pendiente?: number;
+  tiene_abonos?: boolean;
+  importes?: {total: number; saldo: number} | null;
   incluir_numeros_sin_pagar?: boolean;
   premios_publicos?: {
     orden: number;

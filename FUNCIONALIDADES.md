@@ -20,3 +20,5 @@
 **Texto acordado para «Sin definir»**: «Por el momento no está definido, consultar el link de su boleto 7 días antes del evento.»
 
 **Decisión visual del boleto.** El texto blanco con contorno oscuro mantiene la legibilidad. La plataforma aparece con su nombre e ícono junto al participante. El enlace completo viaja en el mensaje virtual; el mensaje presencial admite dirección y enlace opcional de Google Maps.
+
+**Método de pago.** Cada rifa admite Yape o Plin con un celular peruano de nueve dígitos, u Otros con nombre y referencia de texto. Al habilitarlo se muestra en la disponibilidad abierta, el boleto, su descarga y el mensaje del organizador. Copiar la referencia solo escribe en el portapapeles. El boleto pagado conserva el método como referencia. Un saldo positivo se informa con su importe vigente. Deshabilitar el método lo retira de las siguientes consultas y exportaciones.

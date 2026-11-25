@@ -29,8 +29,9 @@ En **SQL Editor → New query**, pega y ejecuta **un archivo completo a la vez**
 | 17 | 20261125000100_participacion_sin_pago.sql | Participación de ventas con saldo y reservas vigentes por rifa |
 | 18 | 20261125000200_disponibilidad_publica.sql | Disponibilidad pública por rifa y catálogo compartido |
 | 19 | 20261125000300_estados_disponibilidad.sql | Distingue reserva y compra o emisión en la consulta pública |
+| 20 | 20261125000400_metodo_pago_rifa.sql | Configuración de pago por rifa y saldo del boleto público |
 
-Aplica las migraciones pendientes en orden hasta la 19. En las rifas anteriores se seleccionan inicialmente hasta cinco premios según el orden del sorteo. En rifas activas puedes cambiar esa selección desde **Premios**. Al mover un destacado a una prioridad ocupada, ambos intercambian sus posiciones en el boleto.
+Aplica las migraciones pendientes en orden hasta la 20. En las rifas anteriores se seleccionan inicialmente hasta cinco premios según el orden del sorteo. En rifas activas puedes cambiar esa selección desde **Premios**. Al mover un destacado a una prioridad ocupada, ambos intercambian sus posiciones en el boleto.
 
 Para WhatsApp abre un boleto, personaliza el mensaje y prepara la imagen. El selector del dispositivo permite elegir WhatsApp si admite archivos. También puedes descargar el PNG y adjuntarlo al mensaje preparado.
 
@@ -169,3 +170,7 @@ Si al guardar aparece `Could not find the function public.configurar_participaci
 ### Actualizar desde disponibilidad pública versión 18
 
 En el SQL Editor del proyecto de pruebas ejecuta completo `supabase/migrations/20261125000300_estados_disponibilidad.sql`. Publica el frontend actualizado en el sitio de pruebas. La Edge Function existente consulta la misma RPC y los enlaces emitidos siguen vigentes. Comprueba una reserva antes y después de emitir su boleto, la liberación de su número, el cambio de tema tras recargar y el mensaje de ambos botones de WhatsApp. Tras la validación y autorización, repite el orden en producción.
+
+### Método de pago por rifa
+
+En el entorno de pruebas, aplica la migración 20 después de la 19 y después inicia el frontend actualizado. Las funciones Edge existentes siguen llamando a las mismas RPC. En **Nueva rifa** o **Configuración**, habilita el método, selecciona Yape, Plin u Otros y guarda. Abre un boleto anterior y el enlace de disponibilidad para comprobar el cambio. El PNG, el PDF, el ZIP y el mensaje se actualizan al generarlos de nuevo. La publicación en producción requiere autorización y respaldo previo.

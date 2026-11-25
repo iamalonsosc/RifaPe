@@ -4,6 +4,7 @@ Orden de más reciente a más antiguo. Los hashes identifican commits del reposi
 
 | Referencia | Cambios identificados |
 |---|---|
+| 25 de noviembre de 2026 · migración 20 local | Métodos de pago por rifa con logos locales, franja descargable, saldo del boleto y copia de la referencia en las consultas públicas. |
 | 25 de noviembre de 2026 · interfaz local | El catálogo de disponibilidad y del boleto muestra un premio por fila en móvil, con la foto más grande junto al texto. En escritorio distribuye los premios en columnas según el espacio disponible. |
 | 25 de noviembre de 2026 · migración 19 local | Tema claro u oscuro por visitante y colores por estado de número. El ícono de RifaPes en la consulta pública y el botón de pantalla completa del sorteo conservan contraste en ambos temas. Los enlaces de disponibilidad y boletos abren WhatsApp Web en PC y permiten copiar el mensaje completo. |
 | 25 de noviembre de 2026 · migración 18 local | Disponibilidad pública opcional por rifa, filtros, ocupación, actualización en pestañas visibles y catálogo completo compartido con el boleto. |
@@ -16,6 +17,8 @@ Orden de más reciente a más antiguo. Los hashes identifican commits del reposi
 | `56e9dc9`, migraciones 1–10 | Base de rifas, participantes, reservas, ventas, abonos, resumen financiero, sorteos, boletos públicos, imágenes y edición de plantillas. |
 
 ## Evidencia de verificación
+
+Para la migración 20 pasaron 25 pruebas de Node sobre PostgreSQL temporal, seis recorridos en Edge, ESLint y la compilación. Se comprobaron el QR y los píxeles del logo y de la referencia en el PNG descargado. En la demostración local se cambió de Yape a una referencia personalizada y se restauró Yape, conservando el enlace del boleto y su saldo de S/ 30 sobre S/ 40.
 
 Para la migración 18 pasaron 24 pruebas de Node sobre PostgreSQL temporal (incluida la contenedora) y seis recorridos en Edge con Supabase simulado. Se probaron catálogos de 25 y 50 premios, aislamiento, revocación, inventario, pérdida de conexión y persistencia de filtros durante el refresco. ESLint y la compilación finalizaron correctamente. La integración en el dominio de destino queda pendiente.
 

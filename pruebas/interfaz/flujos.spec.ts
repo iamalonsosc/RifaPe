@@ -300,6 +300,7 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
       expect(route.request().postDataJSON().p_ofertas).toEqual([
         { cantidad: 3, precio: 12, activa: true },
       ]);
+      expect(route.request().postDataJSON().p_metodo_pago).toEqual({tipo:"Yape",nombre:"Yape",referencia:"960421169"});
       creada = true;
       data = rifaid;
       expect(route.request().postDataJSON().p_nombre).toBe("Rifa de prueba");
@@ -308,6 +309,7 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
       data = [
         {
           id_rifa: rifaid,
+          tipo_metodo_pago: 'Yape', referencia_pago: '960421169',
           incluir_numeros_sin_pagar: incluir,
           disponibilidad_habilitada: enlaceActivo,
           mostrar_premios_publicos: mostrarPremios,
@@ -350,6 +352,9 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
     .fill("3");
   await page.getByLabel("Precio de la oferta").fill("12");
   await expect(page.locator(".ofertas")).toContainText("3.00");
+  await page.getByLabel("Habilitar método de pago").check();
+  await page.getByLabel("Número de celular peruano").fill("960421169");
+  await expect(page.locator(".editor-pago .referencia-pago")).toHaveText("960421169");
   await page.getByLabel("Fecha y hora de la rifa").fill("2026-12-24T10:00");
   await page.getByRole("button", { name: "Guardar" }).click();
   await expect(
@@ -584,7 +589,7 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   await page.getByRole("button",{name:"Copiar mensaje", exact:true}).click();
   await expect.poll(()=>page.evaluate(async ()=>(await navigator.clipboard.readText()).replaceAll("\r\n","\n"))).toBe(mensaje);
   for (const contenido of [
-    "🎟️", "📅", "Gracias Alonso",
+    "🎟️", "📅", "Gracias Alonso", "💳 *MÉTODO DE PAGO*", "Aplicativo: Yape", "Número: 960421169",
     "007 · ¡Gracias por participar!",
     "009 · ¡Gracias por reservar!",
     "011 · Tu boleto ha sido registrado correctamente.",
@@ -750,7 +755,8 @@ test("Boleto público, QR, destino y descargas PNG/PDF", async ({ page }) => {
       json: {
         codigo,
         rifa: "Rifa de prueba",
-        numero: 7,
+        numero: 7, numeros: [7,9,15,28],
+        metodo_pago: {tipo:"Yape",nombre:"Yape",referencia:"960421169"}, saldo_pendiente:12,
         participante: "Alonso",
         telefono: "999123456",
         destacados: ["Ventilador"],
@@ -780,6 +786,11 @@ test("Boleto público, QR, destino y descargas PNG/PDF", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: "Ver sorteo en vivo" }),
   ).toHaveAttribute("href", destino);
+  await page.setViewportSize({width:390,height:844});
+  await expect(page.getByText(/Realiza el pago al número indicado/)).toBeVisible();
+  const franja = page.locator(".boleto .franja-pago");
+  await expect(franja).toContainText("960421169");
+  await expect(franja.locator("img")).toHaveJSProperty("naturalWidth",72);
   const ticket = await page.locator(".boleto").boundingBox();
   await expect(page.locator(".plataforma-boleto")).toHaveCSS(
     "color",
@@ -793,12 +804,28 @@ test("Boleto público, QR, destino y descargas PNG/PDF", async ({ page }) => {
   await expect(page.locator(".boleto")).not.toContainText(destino);
   await expect(page.getByText("Compartir por WhatsApp")).toHaveCount(0);
   expect(ticket!.width).toBeGreaterThan(ticket!.height * 1.5);
+  const limites = await franja.locator(".logo-pago, .referencia-pago").evaluateAll(els => els.map(el => {
+    const boleto = el.closest(".boleto")!;
+    const origen = boleto.getBoundingClientRect(), rect = el.getBoundingClientRect();
+    const escala = (boleto as HTMLElement).offsetWidth / origen.width;
+    return {x:(rect.x-origen.x)*escala, y:(rect.y-origen.y)*escala, ancho:rect.width*escala, alto:rect.height*escala};
+  }));
   for (const tipo of ["PNG", "PDF"]) {
     const pendiente = page.waitForEvent("download");
     await page.getByRole("button", { name: "Descargar " + tipo }).click();
     const descarga = await pendiente;
     if (tipo === "PNG") {
       const png = PNG.sync.read(await readFile((await descarga.path())!));
+      // Comprueba la tinta del logo y de las cifras en el archivo exportado.
+      for (const rect of limites) {
+        let tinta = 0;
+        for (let y=Math.ceil(rect.y*2); y<Math.floor((rect.y+rect.alto)*2); y++)
+          for (let x=Math.ceil(rect.x*2); x<Math.floor((rect.x+rect.ancho)*2); x++) {
+            const i = (y*png.width+x)*4;
+            if (png.data[i]<190 && png.data[i+1]<140 && png.data[i+2]>png.data[i+1]+20) tinta++;
+          }
+        expect(tinta).toBeGreaterThan(80);
+      }
       expect(
         jsQR(new Uint8ClampedArray(png.data), png.width, png.height)?.data,
       ).toBe(page.url());
@@ -873,6 +900,7 @@ test("Cuadrícula completa para 1 a 100 números", async ({ page }) => {
         numeros: Array.from({ length: cantidad }, (_, i) => i + 1),
         participante: "Participante",
         rifa: "Rifa navideña",
+        metodo_pago: { tipo: "Plin", nombre: "Plin", referencia: "987654321" },
         estado: "emitido",
         estado_rifa: "activa",
         fecha: "2026-12-05T23:00:00Z",

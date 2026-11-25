@@ -1,3 +1,4 @@
+import { EditorMetodo, metodoDe, validarMetodo } from "./metodo-pago";
 import { ConfiguracionPublica } from './disponibilidad';
 import { EditorOfertas, AnularRifa, type Oferta } from "./ofertas";
 import { ResumenPagos, type DatosResumen } from "./pagos";
@@ -91,6 +92,8 @@ export function EditarRifa({
   r?: Rifa;
   alGuardar: (id: string) => void;
 }) {
+  const [metodo, cambiarMetodo] = useState(() => metodoDe(r));
+  const [conMovimientos, registrarMovimientos] = useState(false);
   const [ofertas, cambiar] = useState<Oferta[]>([]),
     [base, precio] = useState(r?.precio_numero ?? 0),
     [listas, listo] = useState(!r),
@@ -99,9 +102,13 @@ export function EditarRifa({
     if (!r) return;
     let vivo = true;
     listo(false);
-    filas<Oferta>("oferta_rifa", ["id_rifa", r.id_rifa], "cantidad")
-      .then((o) => {
+    Promise.all([
+      filas<Oferta>("oferta_rifa", ["id_rifa", r.id_rifa], "cantidad"),
+      db!.from("venta").select("id_venta").eq("id_rifa", r.id_rifa).limit(1),
+      db!.from("reserva").select("id_reserva").eq("id_rifa", r.id_rifa).limit(1),
+    ]).then(([o, ventas, reservas]) => {
         if (vivo) {
+          registrarMovimientos(!!(ventas.error || reservas.error || ventas.data?.length || reservas.data?.length));
           cambiar(o);
           listo(true);
         }
@@ -122,6 +129,7 @@ export function EditarRifa({
           alGuardar(
             await rpc<string>("guardar_rifa_ofertas", {
               p_ofertas: ofertas,
+              p_metodo_pago: validarMetodo(metodo),
               p_nombre: campo(f, "nombre"),
               p_descripcion: campo(f, "descripcion"),
               p_precio: Number(f.get("precio")),
@@ -189,6 +197,7 @@ export function EditarRifa({
             accept="image/png,image/webp,image/jpeg"
           />
         </Campo>
+        <EditorMetodo metodo={metodo} cambiar={cambiarMetodo} conMovimientos={conMovimientos} />
         <EditorOfertas lista={ofertas} cambiar={cambiar} base={base} />
       </Formulario>
     </section>
@@ -454,7 +463,7 @@ export function PanelRifa({
               </Formulario>
             </section>
             <VentasEnVivo r={r} recargar={recargar} />
-            <EditarRifa r={r} alGuardar={recargar} />
+            <EditarRifa key={r.id_rifa + JSON.stringify(metodoDe(r))} r={r} alGuardar={recargar} />
             <Accion
               texto="Eliminar rifa sin movimientos"
               ejecutar={async () => {

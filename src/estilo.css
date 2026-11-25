@@ -1614,3 +1614,22 @@ summary[data-operacion="Ventas"] {
 .config-publica h3 { margin:1rem 0 .5rem; }
 .acciones-publicas p { overflow-wrap:anywhere; }
 .acciones-publicas > a,.acciones-publicas > button,.config-publica fieldset > button,.disponibilidad .catalogo-premios + button { margin:.5rem .5rem .25rem 0; }
+
+.editor-pago { min-width: 0; }
+.editor-pago legend, .titulo-pago { font-weight: 700; }
+.opciones-pago { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .5rem; margin-block: .75rem; }
+.pago-yape { --pago-fondo: #f4e7fa; --pago-tinta: #591572; --pago-acento: #852d99; }
+.pago-plin { --pago-fondo: #daf7f6; --pago-tinta: #00565c; --pago-acento: #00868c; }
+.pago-otros { --pago-fondo: #edf1ed; --pago-tinta: #293e36; --pago-acento: #567065; }
+.opcion-pago, .tarjeta-pago { background: var(--pago-fondo); color: var(--pago-tinta); border-radius: 12px; }
+.opciones-pago .opcion-pago { display: flex; align-items: center; flex-direction: column; gap: .4rem; padding: .65rem .25rem; cursor: pointer; border: 2px solid transparent; }
+.opcion-pago:has(input:checked) { border-color: var(--pago-acento); }
+.opcion-pago input { width: auto; accent-color: var(--pago-acento); }
+.tarjeta-pago { display: grid; justify-items: center; gap: .45rem; padding: 1rem; text-align: center; margin-block: 1rem; overflow-wrap: anywhere; }
+.titulo-pago { text-transform: uppercase; font-size: .8rem; letter-spacing: .08em; }
+.identidad-pago { display: flex; align-items: center; justify-content: center; gap: .65rem; max-width: 100%; }
+.logo-pago, .boleto img.logo-pago { width: 48px; height: 48px; object-fit: contain; flex: none; border-radius: 8px; }
+.tarjeta-pago .referencia-pago { max-width: 100%; font-size: clamp(1.5rem,5vw,2.4rem); line-height: 1.15; font-variant-numeric: tabular-nums; }
+.boleto .franja-pago { grid-column: 1/-1; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px; padding: 12px 24px; margin: 0; border-radius: 0; text-shadow: none; }
+.boleto .franja-pago .referencia-pago { font-size: 32px; }
+.boleto:has(.franja-pago) { grid-template-rows: minmax(400px, auto) auto; }

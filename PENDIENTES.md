@@ -4,6 +4,7 @@ Corte de revisión: 25 de noviembre de 2026. Este registro distingue tareas abie
 
 | Estado | Módulo | Siguiente comprobación o criterio de cierre |
 |---|---|---|
+| Pendiente de integración en destino | Método de pago por rifa | Aplicar la migración 20 al proyecto de pruebas identificado y verificar Auth, el mismo QR en un teléfono físico y la recepción del mensaje en WhatsApp. |
 | Pendiente de integración en destino | Disponibilidad pública | En Netlify y Supabase de pruebas, abrir y recargar el enlace de disponibilidad sin iniciar sesión, comprobar las fotos de Storage, Cron, la respuesta a la revocación y el aspecto de los emojis al recibir el mensaje desde WhatsApp Web y desde la aplicación móvil. Autorizar producción tras validar el recorrido del README. |
 | Pendiente de publicación | Participación por rifa | Aplicar la migración 17 tras la 16 con autorización. Comprobar el switch, una reserva ganadora, una venta en vivo con saldo y su mensaje de WhatsApp en una rifa de pruebas del entorno de destino. |
 | Pendiente de revisión y publicación | Operaciones en vivo | La migración 16 ya figura en Git. Confirmar las migraciones aplicadas en el entorno de destino. Con autorización, respaldar la base, aplicar las pendientes en orden y publicar el frontend según [README.md](README.md). |
