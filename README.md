@@ -28,8 +28,9 @@ En **SQL Editor → New query**, pega y ejecuta **un archivo completo a la vez**
 | 16 | 20261124000400_operaciones_en_vivo.sql | Reservas opcionales, anulación trazable, catálogo público y ventas durante el sorteo |
 | 17 | 20261125000100_participacion_sin_pago.sql | Participación de ventas con saldo y reservas vigentes por rifa |
 | 18 | 20261125000200_disponibilidad_publica.sql | Disponibilidad pública por rifa y catálogo compartido |
+| 19 | 20261125000300_estados_disponibilidad.sql | Distingue reserva y compra o emisión en la consulta pública |
 
-Aplica las migraciones pendientes en orden hasta la 18. En las rifas anteriores se seleccionan inicialmente hasta cinco premios según el orden del sorteo. En rifas activas puedes cambiar esa selección desde **Premios**. Al mover un destacado a una prioridad ocupada, ambos intercambian sus posiciones en el boleto.
+Aplica las migraciones pendientes en orden hasta la 19. En las rifas anteriores se seleccionan inicialmente hasta cinco premios según el orden del sorteo. En rifas activas puedes cambiar esa selección desde **Premios**. Al mover un destacado a una prioridad ocupada, ambos intercambian sus posiciones en el boleto.
 
 Para WhatsApp abre un boleto, personaliza el mensaje y prepara la imagen. El selector del dispositivo permite elegir WhatsApp si admite archivos. También puedes descargar el PNG y adjuntarlo al mensaje preparado.
 
@@ -160,7 +161,11 @@ Si al guardar aparece `Could not find the function public.configurar_participaci
 
 ### Probar y publicar la disponibilidad pública
 
-1. En Supabase de **pruebas**, aplica las migraciones pendientes hasta la 18. Despliega las funciones del apartado 3 en ese proyecto. Configura `ORIGEN_APLICACION` con el origen exacto del frontend de pruebas y apunta sus dos variables `VITE_SUPABASE_*` al mismo proyecto. Para una instancia local inicializada puedes usar `supabase migration up --local` y `supabase functions serve`.
+1. En Supabase de **pruebas**, aplica las migraciones pendientes hasta la 19. Despliega las funciones del apartado 3 en ese proyecto. Configura `ORIGEN_APLICACION` con el origen exacto del frontend de pruebas y apunta sus dos variables `VITE_SUPABASE_*` al mismo proyecto. Para una instancia local inicializada puedes usar `supabase migration up --local` y `supabase functions serve`.
 2. Abre **Rifas → tu rifa → Configuración → Disponibilidad pública**, habilita el enlace y cópialo. Ábrelo en una ventana privada. Busca 7 y 007, activa el filtro de disponibles y expande los premios. Vende un número y reserva otro en administración. Tras la siguiente actualización comprueba su ocupación y libera la reserva. Un vencimiento se refleja cuando la base libera el número.
 3. Cambia cada opción de información visible. Revisa la vista previa y el texto de WhatsApp. Oculta los premios y comprueba también el catálogo del boleto. Regenera el enlace, recarga el anterior y prueba el nuevo. Deshabilítalo y comprueba el resultado desde una ventana privada. En un sitio de pruebas de Netlify abre directamente la ruta, recárgala y verifica los encabezados `X-Robots-Tag` y `Cache-Control`.
 4. Para **producción**, después de validar y autorizar la publicación, confirma el proyecto de destino, respalda la base y aplica las migraciones pendientes en orden. Despliega `consultar-disponibilidad` con los comandos del apartado 3 y el origen de producción. Una función `consultar-boleto` ya publicada sigue siendo compatible. Publica el frontend en Netlify con el `netlify.toml` del repositorio. Comprueba un boleto anterior y un enlace de disponibilidad habilitado expresamente en el sitio final.
+
+### Actualizar desde disponibilidad pública versión 18
+
+En el SQL Editor del proyecto de pruebas ejecuta completo `supabase/migrations/20261125000300_estados_disponibilidad.sql`. Publica el frontend actualizado en el sitio de pruebas. La Edge Function existente consulta la misma RPC y los enlaces emitidos siguen vigentes. Comprueba una reserva antes y después de emitir su boleto, la liberación de su número, el cambio de tema tras recargar y el mensaje de ambos botones de WhatsApp. Tras la validación y autorización, repite el orden en producción.

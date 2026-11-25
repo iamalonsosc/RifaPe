@@ -1,4 +1,5 @@
 import { CatalogoPremios } from './catalogo-premios';
+import { copiarMensaje, enlaceWhatsApp } from "./whatsapp";
 import {
   PlataformaBoleto,
   plataformaDe,
@@ -634,14 +635,10 @@ function CompartirIndividual({
             Descargar imagen
           </a>
           {" · "}
+          <button onClick={() => void copiarMensaje(texto, informar)}>Copiar mensaje</button>
           {destino && (
             <a
-              href={
-                "https://wa.me/" +
-                destino +
-                "?text=" +
-                encodeURIComponent(texto)
-              }
+              href={enlaceWhatsApp(texto, destino)}
               target="_blank"
               rel="noreferrer"
             >

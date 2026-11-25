@@ -361,6 +361,12 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   await expect(page.getByLabel("Habilitar enlace público")).toBeChecked();
   await expect(page.getByRole("link",{name:"Vista previa"})).toHaveAttribute("href",new RegExp("/disponibilidad/"+usuario+"$"));
   const compartir = page.getByRole("link",{name:"Compartir por WhatsApp"});
+  const enlaceCompartido = new URL((await compartir.getAttribute("href"))!);
+  expect(enlaceCompartido.host).toBe("web.whatsapp.com");
+  expect(enlaceCompartido.searchParams.get("text")).toContain("🎟️ ¡Consulta nuestra rifa!");
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button",{name:"Copiar mensaje", exact:true}).click();
+  await expect.poll(()=>page.evaluate(async ()=>(await navigator.clipboard.readText()).replaceAll("\r\n","\n"))).toBe(enlaceCompartido.searchParams.get("text"));
   await expect(compartir).toHaveAttribute("href",/premios/);
   await page.getByLabel("Mostrar premios",{exact:true}).click();
   await expect(page.getByLabel("Mostrar premios",{exact:true})).not.toBeChecked();
@@ -559,7 +565,7 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
   );
   await expect(
     page.getByRole("link", { name: "Abrir WhatsApp" }),
-  ).toHaveAttribute("href", /^https:\/\/wa\.me\/51991111111\?text=/);
+  ).toHaveAttribute("href", /^https:\/\/web\.whatsapp\.com\/send\?phone=51991111111&text=/);
   await page.getByLabel("Mensaje personalizado").fill("Gracias Alonso");
 
   const imagenCompartida = page.getByRole("link", { name: "Descargar imagen" });
@@ -568,15 +574,17 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
     await page.getByLabel("Teléfono para este envío").fill(numero);
     await expect(
       page.getByRole("link", { name: "Abrir WhatsApp" }),
-    ).toHaveAttribute("href", /^https:\/\/wa\.me\/51987654321\?text=/);
+    ).toHaveAttribute("href", /^https:\/\/web\.whatsapp\.com\/send\?phone=51987654321&text=/);
   }
   const mensaje = new URL(
     (await page
       .getByRole("link", { name: "Abrir WhatsApp" })
       .getAttribute("href"))!,
   ).searchParams.get("text")!;
+  await page.getByRole("button",{name:"Copiar mensaje", exact:true}).click();
+  await expect.poll(()=>page.evaluate(async ()=>(await navigator.clipboard.readText()).replaceAll("\r\n","\n"))).toBe(mensaje);
   for (const contenido of [
-    "Gracias Alonso",
+    "🎟️", "📅", "Gracias Alonso",
     "007 · ¡Gracias por participar!",
     "009 · ¡Gracias por reservar!",
     "011 · Tu boleto ha sido registrado correctamente.",
@@ -658,6 +666,12 @@ test("Inicio de sesión, rifa, navegación y tema en móvil", async ({ page }) =
     page.getByRole("button", { name: "Descargar PNG" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Sorteo", exact: true }).click();
+  const ampliar = page.getByRole("button", {name:"Pantalla completa"});
+  for (let i = 0; i < 2; i++) {
+    await expect(ampliar).toHaveCSS("background-color", "rgb(33, 63, 59)");
+    await expect(ampliar).toHaveCSS("color", "rgb(242, 246, 238)");
+    await page.getByRole("button", {name:"Cambiar tema"}).click();
+  }
   page.once("dialog", (d) => d.accept());
   await page.getByRole("button", { name: "Iniciar sorteo oficial" }).click();
   const pantalla = page.locator(".transmision");

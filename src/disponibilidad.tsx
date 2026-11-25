@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Globe, Ticket as Icono, Gift, Info } from "lucide-react";
 import { db, rpc, soles, fecha, numero, type Rifa, type Ticket } from "./datos";
 import { CatalogoPremios } from "./catalogo-premios";
+import { copiarMensaje, enlaceWhatsApp } from "./whatsapp";
 
 const opciones = [
   ["mostrar_foto_publica", "p_foto", "Mostrar fotografía de la rifa"],
@@ -127,12 +128,15 @@ export function ConfiguracionPublica({
             </a>
             <a
               className="boton-evento"
-              href={"https://wa.me/?text=" + encodeURIComponent(mensaje)}
+              href={enlaceWhatsApp(mensaje)}
               target="_blank"
               rel="noreferrer"
             >
               Compartir por WhatsApp
             </a>
+            <button onClick={() => void copiarMensaje(mensaje, avisar)}>
+              Copiar mensaje
+            </button>
           </div>
         )}
         <button
@@ -161,15 +165,32 @@ interface Consulta {
   precio?: number;
   fecha?: string;
   numeros?: number[];
+  reservados?: number[];
+  comprados_emitidos?: number[];
   premios?: Ticket["premios_publicos"];
 }
 const porPagina = 150;
+const clasesNumero = {
+  Disponible: "libre",
+  Reservado: "ocupado",
+  "Comprado o emitido": "comprado",
+  "No disponible": "cerrado",
+};
 export function Disponibilidad({ token }: { token: string }) {
   const [datos, mostrar] = useState<Consulta | null>(null);
   const [estado, cambiarEstado] = useState<
     "cargando" | "vigente" | "invalido" | "error"
   >("cargando");
   const [ultima, actualizarHora] = useState("");
+  const [tema, elegirTema] = useState(
+    () =>
+      localStorage.getItem("temaDisponibilidad") ||
+      localStorage.getItem("tema") ||
+      (matchMedia("(prefers-color-scheme: dark)").matches ? "oscuro" : "claro"),
+  );
+  useEffect(() => {
+    document.documentElement.dataset.tema = tema;
+  }, [tema]);
   const [busqueda, buscar] = useState("");
   const [solo, filtrar] = useState(false);
   const [pagina, paginar] = useState(0);
@@ -177,9 +198,6 @@ export function Disponibilidad({ token }: { token: string }) {
   const reintentar = useRef<() => void>(() => {});
   useEffect(() => {
     document.title = "Disponibilidad pública · RifaPes";
-    document.documentElement.dataset.tema =
-      localStorage.getItem("tema") ||
-      (matchMedia("(prefers-color-scheme: dark)").matches ? "oscuro" : "claro");
     const meta = document.createElement("meta");
     meta.name = "robots";
     meta.content = "noindex, nofollow";
@@ -242,6 +260,14 @@ export function Disponibilidad({ token }: { token: string }) {
     };
   }, [token]);
   const numeros = datos?.numeros ?? [];
+  const reservados = new Set(datos?.reservados);
+  const comprados = new Set(datos?.comprados_emitidos);
+  function estadoNumero(n: number) {
+    if (n > 0) return "Disponible";
+    if (comprados.has(-n)) return "Comprado o emitido";
+    if (reservados.has(-n)) return "Reservado";
+    return "No disponible";
+  }
   const libres = numeros.filter((n) => n > 0).length,
     ocupados = numeros.length - libres;
   const porcentaje = numeros.length
@@ -261,6 +287,15 @@ export function Disponibilidad({ token }: { token: string }) {
         <strong className="marca">
           <Icono /> RifaPes
         </strong>
+        <button
+          onClick={() => {
+            const siguiente = tema === "oscuro" ? "claro" : "oscuro";
+            localStorage.setItem("temaDisponibilidad", siguiente);
+            elegirTema(siguiente);
+          }}
+        >
+          Usar tema {tema === "oscuro" ? "claro" : "oscuro"}
+        </button>
         {datos && (
           <span className="etiqueta-rifa">
             Rifa {datos.estado.replace("_", " ")}
@@ -350,24 +385,30 @@ export function Disponibilidad({ token }: { token: string }) {
                 </label>
                 <p className="leyenda-publica">
                   <span>Disponible</span>
-                  <span>No disponible</span>
+                  {datos.reservados && <span>Reservado</span>}
+                  {datos.comprados_emitidos && (
+                    <span className="comprado">Comprado o emitido</span>
+                  )}
+                  {ocupados > reservados.size + comprados.size && (
+                    <span className="cerrado">No disponible</span>
+                  )}
                 </p>
                 <div className="numeros-publicos">
                   {resultado
                     .slice(actual * porPagina, (actual + 1) * porPagina)
-                    .map((n) => (
-                      <span
-                        key={Math.abs(n)}
-                        className={n > 0 ? "libre" : "ocupado"}
-                        aria-label={
-                          numero(Math.abs(n)) +
-                          " · " +
-                          (n > 0 ? "Disponible" : "No disponible")
-                        }
-                      >
-                        {numero(Math.abs(n))}
-                      </span>
-                    ))}
+                    .map((n) => {
+                      const estado = estadoNumero(n);
+                      return (
+                        <span
+                          key={Math.abs(n)}
+                          className={clasesNumero[estado]}
+                          title={estado}
+                          aria-label={numero(Math.abs(n)) + " · " + estado}
+                        >
+                          {numero(Math.abs(n))}
+                        </span>
+                      );
+                    })}
                 </div>
                 {!resultado.length && (
                   <p>No encontramos números que coincidan con tu búsqueda.</p>

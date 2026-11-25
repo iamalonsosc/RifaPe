@@ -12,7 +12,9 @@ test("Consulta anónima, actualización, filtros y catálogo responsive", async 
   const datos = {
     nombre: "Rifa de noviembre",
     estado: "activa",
-    numeros: Array.from({ length: 220 }, (_, i) => (i === 6 ? -7 : i + 1)),
+    numeros: Array.from({ length: 220 }, (_, i) => (i === 6 || i === 7 ? -(i+1) : i + 1)),
+    reservados: [7],
+    comprados_emitidos: [8],
     premios,
   };
   let status = 200,
@@ -34,6 +36,17 @@ test("Consulta anónima, actualización, filtros y catálogo responsive", async 
     /noindex/,
   );
   const grid = page.locator(".numeros-publicos");
+  const tema = page.getByRole("button",{name:/Usar tema/});
+  const icono = page.locator(".marca svg");
+  await expect(icono).toHaveCSS("color","rgb(213, 220, 149)");
+  await expect(icono).toHaveCSS("background-color","rgb(54, 89, 62)");
+  const siguiente = (await tema.innerText()).endsWith("oscuro") ? "oscuro" : "claro";
+  await tema.click();
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-tema",siguiente);
+  await expect(icono).toHaveCSS("color","rgb(213, 220, 149)");
+  await expect(grid.locator('[title="Reservado"]')).toHaveText("007");
+  await expect(grid.locator(".comprado")).toHaveText("008");
   await expect(grid.locator("span")).toHaveCount(150);
   await page.getByRole("button", { name: "Siguiente" }).click();
   await expect(grid.getByText("220", { exact: true })).toBeVisible();
@@ -57,6 +70,7 @@ test("Consulta anónima, actualización, filtros y catálogo responsive", async 
     "/regalo-sorpresa.svg",
   );
   datos.numeros[6] = 7;
+  datos.reservados = [];
   await page.clock.fastForward(10100);
   await expect(grid.locator(".libre")).toHaveText("007");
   await expect(buscar).toHaveValue("7");

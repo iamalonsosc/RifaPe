@@ -4,6 +4,7 @@ Orden de más reciente a más antiguo. Los hashes identifican commits del reposi
 
 | Referencia | Cambios identificados |
 |---|---|
+| 25 de noviembre de 2026 · migración 19 local | Tema claro u oscuro por visitante y colores por estado de número. El ícono de RifaPes en la consulta pública y el botón de pantalla completa del sorteo conservan contraste en ambos temas. Los enlaces de disponibilidad y boletos abren WhatsApp Web en PC y permiten copiar el mensaje completo. |
 | 25 de noviembre de 2026 · migración 18 local | Disponibilidad pública opcional por rifa, filtros, ocupación, actualización en pestañas visibles y catálogo completo compartido con el boleto. |
 | 25 de noviembre de 2026 · migración 17 local | Opción de participación con saldo por rifa, reservas vigentes y titular fijado en cada extracción. La configuración, la vista previa y WhatsApp reflejan la regla. Guía de mantenimiento en PDF. |
 | Correcciones locales de la migración 16 | Cotización de reservas en el historial, mensajes por estado de pago, boletos parcialmente anulados y seguimiento de extracciones entre pantallas. |

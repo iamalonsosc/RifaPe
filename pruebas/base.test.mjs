@@ -1384,7 +1384,7 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
       assert.deepEqual((await leer()).premios,[]);
       await q("select guardar_rifa('Actualizada',15,2,'2027-02-03T18:00:00Z','numero',null,'https://example.invalid/rifa.png',$1)",[id]);
       const datos = await leer();
-      assert.deepEqual(Object.keys(datos).sort(),["estado","fecha","foto","nombre","numeros","precio","premios"]);
+      assert.deepEqual(Object.keys(datos).sort(),["comprados_emitidos","estado","fecha","foto","nombre","numeros","precio","premios","reservados"]);
       assert.equal(datos.nombre,"Actualizada");
       assert.equal(datos.precio,15);
       assert.equal(datos.foto,"https://example.invalid/rifa.png");
@@ -1408,12 +1408,18 @@ test("Migraciones y reglas con dos conexiones PostgreSQL", async (t) => {
       assert.deepEqual((await leer()).numeros,[-1,2]);
       const reserva=await uno("select reservar_numeros($1,$2,$3,null)",[id,persona,[ids[1]]]);
       assert.deepEqual((await leer()).numeros,[-1,-2]);
+      assert.deepEqual((await leer()).comprados_emitidos,[1]);
+      assert.deepEqual((await leer()).reservados,[2]);
+      await q("select emitir_boletos_reserva($1)",[reserva]);
+      assert.deepEqual((await leer()).comprados_emitidos,[1,2]);
+      assert.deepEqual((await leer()).reservados,[]);
       await q("select liberar_reserva($1)",[reserva]);
       assert.deepEqual((await leer()).numeros,[-1,2]);
+      assert.deepEqual((await leer()).comprados_emitidos,[1]);
       await pago(venta,15);
       const boleto=await uno("select token_grupo from vw_comprobantes where id_rifa=$1",[id]);
       await q("select configurar_disponibilidad($1,null,false,false,false,false)",[id]);
-      assert.deepEqual(Object.keys(await leer()).sort(),["estado","nombre","numeros"]);
+      assert.deepEqual(Object.keys(await leer()).sort(),["comprados_emitidos","estado","nombre","numeros","reservados"]);
       assert.equal((await leer(boleto,"consultar_boleto")).premios_publicos.length,49);
       await q("select cancelar_venta($1,'Solicitud')",[venta]);
       assert.deepEqual((await leer()).numeros,[1,2]);

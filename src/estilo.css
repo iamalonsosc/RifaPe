@@ -1166,6 +1166,11 @@ input {
 .transmision > p {
   color: #d1e4db;
 }
+.transmision .pantalla-completa {
+  background: #213f3b;
+  color: #f2f6ee;
+  border-color: #97b7a5;
+}
 .transmision .foto-sorteo {
   width: 84px;
   height: 84px;
@@ -1572,7 +1577,6 @@ summary[data-operacion="Ventas"] {
 }
 .disponibilidad header { margin-bottom: 16px; }
 .disponibilidad .marca { color: var(--ink); font-size: 1.15rem; }
-.disponibilidad .marca svg { color: var(--accent); }
 .etiqueta-rifa, .activo-publico {
   border-radius: 20px; background: var(--soft); color: var(--accent); padding: .25rem .75rem;
 }
@@ -1589,13 +1593,15 @@ summary[data-operacion="Ventas"] {
 .progreso-publico progress { width: 100%; accent-color: var(--accent); }
 .disponibilidad section { margin: 1.25rem 0 .7rem; padding: clamp(.6rem,2vw,1.25rem); }
 .disponibilidad input[type=search] { width: 100%; }
-.leyenda-publica { display: flex; gap: 1rem; margin: .7rem 0; font-size: .85rem; }
+.leyenda-publica { display: flex; flex-wrap: wrap; gap: 1rem; margin: .7rem 0; font-size: .85rem; }
 .leyenda-publica span::before { content:""; display:inline-block; width:.85em; height:.85em; margin-right:.3em; border-radius:3px; background:#d4f6df; border:1px solid #9ec9ab; }
 .leyenda-publica span+span::before { background:#e6e8eb; border-color:#b5bbc2; }
 .numeros-publicos { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 4px; }
 .numeros-publicos span { text-align:center; border-radius:5px; padding: .55rem 0; font-size:clamp(.7rem,2.4vw,.95rem); font-variant-numeric: tabular-nums; }
 .numeros-publicos .libre { background:#d4f6df; color:#155634; }
 .numeros-publicos .ocupado { background:#e6e8eb; color:#515966; }
+.numeros-publicos .cerrado, .leyenda-publica .cerrado::before { background:var(--panel); color:var(--muted); border:1px dashed var(--line); }
+.numeros-publicos .comprado, .leyenda-publica .comprado::before { background:#ffd7d7; color:#862626; border-color:#dbadad; }
 @media (min-width:420px) { .numeros-publicos {grid-template-columns:repeat(8,minmax(0,1fr));} }
 @media (min-width:700px) { .numeros-publicos {grid-template-columns:repeat(10,minmax(0,1fr));} }
 @media (min-width:960px) { .numeros-publicos {grid-template-columns:repeat(15,minmax(0,1fr));} }

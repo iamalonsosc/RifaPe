@@ -168,6 +168,7 @@ export function Sorteo({
         <p className="ceja">SORTEO OFICIAL · {r.nombre}</p>
         {document.fullscreenEnabled && (
           <button
+            className="pantalla-completa"
             onClick={() => {
               void (
                 document.fullscreenElement
