@@ -17,6 +17,7 @@ test("Consulta anónima, actualización, filtros y catálogo responsive", async 
     comprados_emitidos: [8],
     premios,
   };
+  premios[1].nombre = "Dispensador de agua de vidrio con depósito de hielo y base metálica";
   let status = 200,
     consultas = 0;
   await page.route(
@@ -50,8 +51,17 @@ test("Consulta anónima, actualización, filtros y catálogo responsive", async 
   await expect(grid.locator("span")).toHaveCount(150);
   await page.getByRole("button", { name: "Siguiente" }).click();
   await expect(grid.getByText("220", { exact: true })).toBeVisible();
-  for (const width of [320, 390, 768, 1280]) {
+  const tarjetas = page.locator(".catalogo-premios article");
+  for (const width of [320, 390, 412, 768, 1280]) {
     await page.setViewportSize({ width, height: 850 });
+    const primera = await tarjetas.nth(0).boundingBox();
+    const segunda = await tarjetas.nth(1).boundingBox();
+    if (width < 768) {
+      expect(segunda!.y).toBeGreaterThanOrEqual(primera!.y + primera!.height);
+    } else if (width === 1280) {
+      expect(segunda!.y).toBe(primera!.y);
+    }
+    expect((await tarjetas.first().locator("img").boundingBox())!.width).toBeGreaterThanOrEqual(76);
     expect(
       await page.evaluate(() => document.body.scrollWidth <= innerWidth),
     ).toBe(true);
